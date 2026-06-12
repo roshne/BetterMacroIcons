@@ -1,49 +1,45 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
-local injected     = false
-local spellNameMap = {}  -- fileID → lowercase spell name(s) for icon name lookup
-local nameIndex    = {}  -- [providerIndex] = searchable name string
-local filteredMap  = {}  -- [displayIndex]  = providerIndex
-local searchText   = ""
+local injected    = false
+local fileIDMap   = {}  -- fileID integer → lowercase icon name (for 10.0+ fileID-only icons)
+local nameIndex   = {}  -- [providerIndex] = searchable name string
+local filteredMap = {}  -- [displayIndex]  = providerIndex
+local searchText  = ""
 
-local SEARCH_H = 26  -- pixels added to frame height + shifted down
+local SEARCH_H = 26
 
--- Build fileID → spell name mapping from the character's spellbook.
--- In WoW 10.0+ GetIconByIndex returns integer fileIDs, not path strings.
--- Spell names are the only human-readable handle we have for those IDs.
-local function buildSpellNameMap()
-    wipe(spellNameMap)
-    if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines) then return end
-    for idx = 1, C_SpellBook.GetNumSpellBookSkillLines() do
-        local info = C_SpellBook.GetSpellBookSkillLineInfo(idx)
-        if info then
-            for i = 1, info.numSpellBookItems do
-                local si = info.itemIndexOffset + i
-                local spellType, id = C_SpellBook.GetSpellBookItemType(si, Enum.SpellBookSpellBank.Player)
-                if spellType ~= Enum.SpellBookItemType.Flyout and id then
-                    local tex  = C_SpellBook.GetSpellBookItemTexture(si, Enum.SpellBookSpellBank.Player)
-                    local name = tex and C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
-                    if tex and name then
-                        local lower = name:lower()
-                        spellNameMap[tex] = spellNameMap[tex] and (spellNameMap[tex] .. " " .. lower) or lower
-                    end
-                end
+-- Call the same C functions the macro picker uses; non-numeric entries are plain icon
+-- names ("spell_frost_frostbolt02").  GetFileIDFromPath maps each one back to its integer
+-- fileDataID so we can match when GetIconByIndex returns a bare integer (10.0+ icons).
+-- Built once per session — the icon set is stable for the lifetime of the client.
+local function buildFileIDMap()
+    if next(fileIDMap) then return end
+    local t = {}
+    GetLooseMacroIcons(t)
+    GetMacroIcons(t)
+    GetLooseMacroItemIcons(t)
+    GetMacroItemIcons(t)
+    for _, s in ipairs(t) do
+        if not tonumber(s) then
+            local id = GetFileIDFromPath("Interface/Icons/" .. s)
+            if id and id > 0 then
+                fileIDMap[id] = s:lower()
             end
         end
     end
 end
 
--- Return a searchable name for a texture value.
--- Pre-10.0: string path "Interface/Icons/Spell_Frost_FrostBolt02.blp" → "spell_frost_frostbolt02"
--- 10.0+: integer fileID → spell name from spellNameMap, or "" if unknown
+-- Return a searchable name for a texture value returned by GetIconByIndex.
+-- String: strip "INTERFACE\ICONS\" prefix and extension → plain icon name.
+-- Integer fileID: look up the name we pre-built from the raw icon list.
 local function iconName(tex)
     if not tex then return "" end
-    if type(tex) == "string" then
-        local base = tex:match("[^/\\]+$") or tex
-        return (base:gsub("%.[^%.]+$", "")):lower()
+    if type(tex) == "number" then
+        return fileIDMap[tex] or ""
     end
-    return spellNameMap[tex] or ""
+    local base = tex:match("[^/\\]+$") or tex
+    return (base:gsub("%.[^%.]+$", "")):lower()
 end
 
 -- Rebuild the name index from the current data provider.
@@ -111,7 +107,7 @@ ns:registerEvent("ADDON_LOADED", function(self, addonName)
         injectSearchBox(frame)
         frame._bmiSearchBox:SetText("")
         searchText = ""
-        buildSpellNameMap()
+        buildFileIDMap()
         rebuildNameIndex(frame)
         applyFilter(frame)
     end)

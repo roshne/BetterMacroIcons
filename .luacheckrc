@@ -6,30 +6,26 @@ std = {
   globals = { "_G" },
   read_globals = {
     "ipairs",
-    "math",
-    "pairs",
-    "select",
-    "string",
-    "table",
+    "next",
     "tonumber",
-    "tostring",
     "type",
     "wipe",
 
     "CreateFrame",
     "hooksecurefunc",
 
-    "C_Spell",
-    "C_SpellBook",
-    "Enum",
+    -- Macro icon C functions (same ones Blizzard's IconDataProvider uses)
+    "GetLooseMacroIcons",
+    "GetMacroIcons",
+    "GetLooseMacroItemIcons",
+    "GetMacroItemIcons",
+    "GetFileIDFromPath",
 
     -- SearchBoxTemplate support function
     "SearchBoxTemplate_OnTextChanged",
 
     -- Blizzard_MacroUI globals (loaded by the time our hooks fire)
     "MacroPopupFrame",
-    "MacroPopupFrameMixin",
-    "IconSelectorPopupFrameTemplateMixin",
 
     -- Suite dependency
     "LibNAddOn",
