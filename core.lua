@@ -1,21 +1,54 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
-local injected    = false
-local nameIndex   = {}  -- [providerIndex] = lowercaseName
-local filteredMap = {}  -- [displayIndex]  = providerIndex
-local searchText  = ""
+local injected     = false
+local spellNameMap = {}  -- fileID → lowercase spell name(s) for icon name lookup
+local nameIndex    = {}  -- [providerIndex] = searchable name string
+local filteredMap  = {}  -- [displayIndex]  = providerIndex
+local searchText   = ""
 
 local SEARCH_H = 26  -- pixels added to frame height + shifted down
 
--- Strip path prefix and file extension, lowercase.
--- "Interface/Icons/Spell_Frost_FrostBolt02.blp" → "spell_frost_frostbolt02"
-local function iconName(tex)
-    if not tex then return "" end
-    local base = tex:match("[^/\\]+$") or tex
-    return (base:gsub("%.[^%.]+$", "")):lower()
+-- Build fileID → spell name mapping from the character's spellbook.
+-- In WoW 10.0+ GetIconByIndex returns integer fileIDs, not path strings.
+-- Spell names are the only human-readable handle we have for those IDs.
+local function buildSpellNameMap()
+    wipe(spellNameMap)
+    if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines) then return end
+    for idx = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+        local info = C_SpellBook.GetSpellBookSkillLineInfo(idx)
+        if info then
+            for i = 1, info.numSpellBookItems do
+                local si = info.itemIndexOffset + i
+                local spellType, id = C_SpellBook.GetSpellBookItemType(si, Enum.SpellBookSpellBank.Player)
+                if spellType ~= Enum.SpellBookItemType.Flyout and id then
+                    local tex  = C_SpellBook.GetSpellBookItemTexture(si, Enum.SpellBookSpellBank.Player)
+                    local name = tex and C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
+                    if tex and name then
+                        local lower = name:lower()
+                        spellNameMap[tex] = spellNameMap[tex] and (spellNameMap[tex] .. " " .. lower) or lower
+                    end
+                end
+            end
+        end
+    end
 end
 
+-- Return a searchable name for a texture value.
+-- Pre-10.0: string path "Interface/Icons/Spell_Frost_FrostBolt02.blp" → "spell_frost_frostbolt02"
+-- 10.0+: integer fileID → spell name from spellNameMap, or "" if unknown
+local function iconName(tex)
+    if not tex then return "" end
+    if type(tex) == "string" then
+        local base = tex:match("[^/\\]+$") or tex
+        return (base:gsub("%.[^%.]+$", "")):lower()
+    end
+    return spellNameMap[tex] or ""
+end
+
+-- Rebuild the name index from the current data provider.
+-- Must be called when the provider changes (OnShow, filter type change).
+-- Not called on every keystroke — applyFilter reuses the existing index.
 local function rebuildNameIndex(frame)
     local p = frame.iconDataProvider
     wipe(nameIndex)
@@ -62,8 +95,7 @@ local function injectSearchBox(frame)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         searchText = self:GetText():lower()
-        rebuildNameIndex(frame)
-        applyFilter(frame)
+        applyFilter(frame)  -- nameIndex is already built; just re-filter
     end)
     frame._bmiSearchBox = box
 end
@@ -71,32 +103,30 @@ end
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
     if addonName ~= "Blizzard_MacroUI" then return end
 
-    -- IMPORTANT: Blizzard uses mixin="MacroPopupFrameMixin" in XML which COPIES
-    -- all mixin methods onto the frame object at creation time. Hooking the mixin
-    -- table after the fact has no effect — we must hook the frame directly.
+    -- IMPORTANT: mixin="MacroPopupFrameMixin" in XML copies all mixin methods onto the
+    -- frame at creation time. Hooking the mixin table after the fact has no effect —
+    -- the frame holds the original pre-hook reference. Hook the frame directly.
 
-    -- After OnShow: inject the search box (once), clear it, rebuild and apply.
-    -- iconDataProvider is already set by MacroPopupFrameMixin:OnShow by this point.
     hooksecurefunc(MacroPopupFrame, "OnShow", function(frame)
         injectSearchBox(frame)
         frame._bmiSearchBox:SetText("")
         searchText = ""
+        buildSpellNameMap()
         rebuildNameIndex(frame)
         applyFilter(frame)
     end)
 
-    -- After SetIconFilterInternal: the data provider now reflects the new type filter.
-    -- Rebuild name index and re-apply our text filter on top.
+    -- After SetIconFilterInternal the provider reflects the new type filter;
+    -- rebuild the name index and re-apply our text filter on top.
     hooksecurefunc(MacroPopupFrame, "SetIconFilterInternal", function(frame)
         rebuildNameIndex(frame)
         applyFilter(frame)
     end)
 
-    -- After Update: re-apply if search is active so Blizzard re-Update calls
-    -- don't clobber our filtered provider.
+    -- After Update re-apply if search is active so any Blizzard re-Update
+    -- doesn't clobber our filtered provider.
     hooksecurefunc(MacroPopupFrame, "Update", function(frame)
         if searchText == "" then return end
-        rebuildNameIndex(frame)
         applyFilter(frame)
     end)
 end)

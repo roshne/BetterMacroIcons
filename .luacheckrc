@@ -19,6 +19,10 @@ std = {
     "CreateFrame",
     "hooksecurefunc",
 
+    "C_Spell",
+    "C_SpellBook",
+    "Enum",
+
     -- SearchBoxTemplate support function
     "SearchBoxTemplate_OnTextChanged",
 
