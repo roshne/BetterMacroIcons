@@ -7,18 +7,16 @@ std = {
   read_globals = {
     "ipairs",
     "next",
-    "tonumber",
+    "pairs",
+    "select",
+    "tostring",
     "type",
     "wipe",
 
     "CreateFrame",
     "hooksecurefunc",
 
-    -- Macro icon C functions (same ones Blizzard's IconDataProvider uses)
-    "GetLooseMacroIcons",
-    "GetMacroIcons",
-    "GetLooseMacroItemIcons",
-    "GetMacroItemIcons",
+    -- Resolves bundled "Interface/Icons/<name>" → fileID for the name map
     "GetFileIDFromPath",
 
     -- SearchBoxTemplate support function

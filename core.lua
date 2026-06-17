@@ -2,37 +2,31 @@
 local ns = LibNAddOn(...)
 
 local injected    = false
-local fileIDMap   = {}  -- fileID integer → lowercase icon name (for 10.0+ fileID-only icons)
+local fileIDMap   = {}  -- fileID integer → lowercase icon name (built once per session)
 local nameIndex   = {}  -- [providerIndex] = searchable name string
 local filteredMap = {}  -- [displayIndex]  = providerIndex
 local searchText  = ""
 
 local SEARCH_H = 26
 
--- Call the same C functions the macro picker uses; non-numeric entries are plain icon
--- names ("spell_frost_frostbolt02").  GetFileIDFromPath maps each one back to its integer
--- fileDataID so we can match when GetIconByIndex returns a bare integer (10.0+ icons).
--- Built once per session — the icon set is stable for the lifetime of the client.
+-- Resolve the bundled Interface\Icons name list (ns.iconNames) to fileIDs so the
+-- provider's integer-fileID entries become text-searchable. GetMacroIcons returns bare
+-- fileIDs in 12.0, so the picker exposes no names of its own; GetFileIDFromPath maps each
+-- bundled name back to the same fileID GetIconByIndex returns. Built once per session —
+-- the icon set is stable for the lifetime of the client.
 local function buildFileIDMap()
     if next(fileIDMap) then return end
-    local t = {}
-    GetLooseMacroIcons(t)
-    GetMacroIcons(t)
-    GetLooseMacroItemIcons(t)
-    GetMacroItemIcons(t)
-    for _, s in ipairs(t) do
-        if not tonumber(s) then
-            local id = GetFileIDFromPath("Interface/Icons/" .. s)
-            if id and id > 0 then
-                fileIDMap[id] = s:lower()
-            end
+    for _, name in ipairs(ns.iconNames) do
+        local id = GetFileIDFromPath("Interface/Icons/" .. name)
+        if id and id > 0 then
+            fileIDMap[id] = name
         end
     end
 end
 
 -- Return a searchable name for a texture value returned by GetIconByIndex.
--- String: strip "INTERFACE\ICONS\" prefix and extension → plain icon name.
--- Integer fileID: look up the name we pre-built from the raw icon list.
+-- String: strip "INTERFACE\ICONS\" prefix → plain icon name.
+-- Integer fileID: look up the bundled-name map.
 local function iconName(tex)
     if not tex then return "" end
     if type(tex) == "number" then
@@ -44,7 +38,6 @@ end
 
 -- Rebuild the name index from the current data provider.
 -- Must be called when the provider changes (OnShow, filter type change).
--- Not called on every keystroke — applyFilter reuses the existing index.
 local function rebuildNameIndex(frame)
     local p = frame.iconDataProvider
     wipe(nameIndex)
@@ -78,9 +71,6 @@ local function injectSearchBox(frame)
     if injected then return end
     injected = true
 
-    -- Grow the popup and shift the icon grid down to make room for the search row.
-    -- Buttons are anchored BOTTOMRIGHT inside BorderBox (setAllPoints), so they
-    -- stay fixed relative to the bottom — the gap between grid and buttons is unchanged.
     frame:SetHeight(frame:GetHeight() + SEARCH_H)
     frame.IconSelector:ClearAllPoints()
     frame.IconSelector:SetPoint("TOPLEFT", frame, "TOPLEFT", 21, -(97 + SEARCH_H))
@@ -91,7 +81,7 @@ local function injectSearchBox(frame)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         searchText = self:GetText():lower()
-        applyFilter(frame)  -- nameIndex is already built; just re-filter
+        applyFilter(frame)
     end)
     frame._bmiSearchBox = box
 end
@@ -99,11 +89,7 @@ end
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
     if addonName ~= "Blizzard_MacroUI" then return end
 
-    -- IMPORTANT: mixin="MacroPopupFrameMixin" in XML copies all mixin methods onto the
-    -- frame at creation time. Hooking the mixin table after the fact has no effect —
-    -- the frame holds the original pre-hook reference. Hook the frame directly.
-
-    hooksecurefunc(MacroPopupFrame, "OnShow", function(frame)
+    MacroPopupFrame:HookScript("OnShow", function(frame)
         injectSearchBox(frame)
         frame._bmiSearchBox:SetText("")
         searchText = ""
@@ -112,17 +98,35 @@ ns:registerEvent("ADDON_LOADED", function(self, addonName)
         applyFilter(frame)
     end)
 
-    -- After SetIconFilterInternal the provider reflects the new type filter;
-    -- rebuild the name index and re-apply our text filter on top.
     hooksecurefunc(MacroPopupFrame, "SetIconFilterInternal", function(frame)
         rebuildNameIndex(frame)
         applyFilter(frame)
     end)
 
-    -- After Update re-apply if search is active so any Blizzard re-Update
-    -- doesn't clobber our filtered provider.
+    -- Re-apply after Blizzard's Update() so it doesn't clobber our filtered provider.
     hooksecurefunc(MacroPopupFrame, "Update", function(frame)
         if searchText == "" then return end
         applyFilter(frame)
     end)
 end)
+
+ns:registerCommand("debug", nil, function()
+    local mapCount = 0
+    for _ in pairs(fileIDMap) do mapCount = mapCount + 1 end
+    ns:Print("fileIDMap: " .. mapCount .. " entries")
+
+    local total, named = #nameIndex, 0
+    for _, v in ipairs(nameIndex) do
+        if v ~= "" then named = named + 1 end
+    end
+    ns:Print("nameIndex: " .. named .. " named / " .. total .. " total")
+
+    if MacroPopupFrame and MacroPopupFrame.iconDataProvider then
+        local p = MacroPopupFrame.iconDataProvider
+        ns:Print("provider total: " .. p:GetNumIcons())
+        local icon2 = p:GetIconByIndex(2)
+        ns:Print("GetIconByIndex(2): " .. type(icon2) .. " = " .. tostring(icon2))
+    else
+        ns:Print("open the icon popup first")
+    end
+end, "Print search diagnostics")
