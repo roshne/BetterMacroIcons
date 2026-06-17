@@ -27,6 +27,8 @@ The addon waits for `ADDON_LOADED` with `addonName == "Blizzard_MacroUI"`, then 
 
 `HookScript("OnShow")` is used (not `hooksecurefunc(frame, "OnShow")`) because the `<OnShow method="OnShow"/>` XML binding captures the method reference at frame creation time, so the Lua-method hook never fires.
 
+It also wraps `MacroPopupFrame.IconSelector`'s **setup callback** (`SelectorMixin:Get/SetSetupCallback`) once at load: the selector drives every (recycled) grid button through that one callback with `(button, selectionIndex, icon)`, so the wrapper calls Blizzard's original, stashes the current fileID on the button, and attaches an idempotent hover tooltip showing the icon's bare name.
+
 ---
 
 ## Data Structures
@@ -70,6 +72,11 @@ applyFilter(frame)        -- wipe + refill filteredMap using nameIndex + searchT
 injectSearchBox(frame)    -- one-time injection; grows frame height by SEARCH_H (26px),
                           -- shifts IconSelector down, creates SearchBoxTemplate EditBox
                           -- stored as frame._bmiSearchBox
+
+installTooltips(selector) -- one-time wrap of the IconSelector setup callback; per button
+                          -- stores button._bmiIcon (current fileID) and hooks OnEnter/OnLeave
+                          -- once (button._bmiHooked). tooltipOnEnter shows iconName(icon) —
+                          -- the bare icon name, or "fileID <n>" when unmapped
 ```
 
 ---
@@ -93,6 +100,7 @@ injectSearchBox(frame)    -- one-time injection; grows frame height by SEARCH_H 
 |---|---|
 | `GetFileIDFromPath` | WoW C function — resolves `"Interface/Icons/<name>"` → integer fileID; used to map each bundled name to the fileID the provider returns |
 | `SearchBoxTemplate_OnTextChanged` | Blizzard UI — handles placeholder text behaviour for `SearchBoxTemplate` frames |
+| `GameTooltip` | Standard WoW API — the hover tooltip shown on each grid icon |
 | `MacroPopupFrame` | Blizzard_MacroUI global — the icon picker frame |
 | `CreateFrame`, `hooksecurefunc`, `wipe` | Standard WoW API |
 
@@ -120,3 +128,5 @@ Wrap each line as `"<name>",` inside `ns.iconNames = { … }`. Names that don't 
 - **Filter ordering**: `nameIndex` must be rebuilt before `applyFilter` is called. `applyFilter` reuses the existing `nameIndex` on every keystroke; `rebuildNameIndex` is only called on provider change.
 - **`SetSelectionsDataProvider` replaces Blizzard's source**: After our filter is active, Blizzard's `Update()` call would reset the provider back. The `Update` hook re-applies our filter whenever `searchText != ""` to keep the grid consistent.
 - **Frame height delta**: `SEARCH_H = 26` — the frame is grown by this amount on first inject. `IconSelector`'s `TOPLEFT` anchor is shifted down by the same delta.
+- **Recycled grid buttons**: the IconSelector pools/reuses buttons as you scroll, so the tooltip `OnEnter` reads `button._bmiIcon` (refreshed every setup-callback run) rather than capturing a fileID at hook time — otherwise a reused button would tooltip a stale icon. The `OnEnter`/`OnLeave` hooks are attached once per button (`button._bmiHooked`), and the setup-callback wrap itself once per selector (`selector._bmiTooltips`).
+- **Tooltips are grid-only**: the "Currently Selected" preview button (`SelectedIconButton`) is intentionally not covered — only the scrollable icon grid gets tooltips.

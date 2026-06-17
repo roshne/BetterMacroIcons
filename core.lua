@@ -36,6 +36,43 @@ local function iconName(tex)
     return (base:gsub("%.[^%.]+$", "")):lower()
 end
 
+-- Tooltip on each grid icon showing its texture path. The IconSelector drives every
+-- (recycled) button through a single setup callback that receives the button and its
+-- fileID; we wrap Blizzard's callback to stash the current fileID on the button and
+-- attach an idempotent OnEnter/OnLeave. Reading button._bmiIcon (refreshed each setup)
+-- keeps the tooltip correct as buttons are reused while scrolling/filtering.
+local function tooltipOnEnter(button)
+    local icon = button._bmiIcon
+    if not icon then return end
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+    local name = iconName(icon)
+    if name ~= "" then
+        GameTooltip:SetText(name)
+    else
+        GameTooltip:SetText("fileID " .. icon)  -- not in the bundled list (e.g. brand-new art)
+    end
+    GameTooltip:Show()
+end
+
+local function tooltipOnLeave()
+    GameTooltip:Hide()
+end
+
+local function installTooltips(selector)
+    if selector._bmiTooltips then return end
+    selector._bmiTooltips = true
+    local original = selector:GetSetupCallback()
+    selector:SetSetupCallback(function(button, selectionIndex, icon)
+        if original then original(button, selectionIndex, icon) end
+        button._bmiIcon = icon
+        if not button._bmiHooked then
+            button._bmiHooked = true
+            button:HookScript("OnEnter", tooltipOnEnter)
+            button:HookScript("OnLeave", tooltipOnLeave)
+        end
+    end)
+end
+
 -- Rebuild the name index from the current data provider.
 -- Must be called when the provider changes (OnShow, filter type change).
 local function rebuildNameIndex(frame)
@@ -88,6 +125,8 @@ end
 
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
     if addonName ~= "Blizzard_MacroUI" then return end
+
+    installTooltips(MacroPopupFrame.IconSelector)
 
     MacroPopupFrame:HookScript("OnShow", function(frame)
         injectSearchBox(frame)
