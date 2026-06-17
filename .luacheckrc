@@ -6,12 +6,9 @@ std = {
   globals = { "_G" },
   read_globals = {
     "ipairs",
-    "math",
+    "next",
     "pairs",
     "select",
-    "string",
-    "table",
-    "tonumber",
     "tostring",
     "type",
     "wipe",
@@ -19,17 +16,14 @@ std = {
     "CreateFrame",
     "hooksecurefunc",
 
-    "C_Spell",
-    "C_SpellBook",
-    "Enum",
+    -- Resolves bundled "Interface/Icons/<name>" → fileID for the name map
+    "GetFileIDFromPath",
 
     -- SearchBoxTemplate support function
     "SearchBoxTemplate_OnTextChanged",
 
     -- Blizzard_MacroUI globals (loaded by the time our hooks fire)
     "MacroPopupFrame",
-    "MacroPopupFrameMixin",
-    "IconSelectorPopupFrameTemplateMixin",
 
     -- Suite dependency
     "LibNAddOn",

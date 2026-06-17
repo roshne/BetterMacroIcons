@@ -1,10 +1,12 @@
-## Interface: 120001
+## Interface: 120007
 ## Title: Better Macro Icons
 ## Notes: Search and filter the macro icon picker
 ## Author: Roshne
-## Version: 12.0.5-r0
+## Version: 12.0.7-r0
+## Category: User Interface
 ## X-License: Apache-2.0
 ## Dependencies: LibNAddOn
 ## X-NUI-COMMANDS: /bmi
 
+icons.lua
 core.lua
