@@ -22,6 +22,9 @@ std = {
     -- SearchBoxTemplate support function
     "SearchBoxTemplate_OnTextChanged",
 
+    -- Tooltip shown on icon hover
+    "GameTooltip",
+
     -- Blizzard_MacroUI globals (loaded by the time our hooks fire)
     "MacroPopupFrame",
 
