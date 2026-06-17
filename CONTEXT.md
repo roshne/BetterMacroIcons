@@ -27,7 +27,7 @@ The addon waits for `ADDON_LOADED` with `addonName == "Blizzard_MacroUI"`, then 
 
 `HookScript("OnShow")` is used (not `hooksecurefunc(frame, "OnShow")`) because the `<OnShow method="OnShow"/>` XML binding captures the method reference at frame creation time, so the Lua-method hook never fires.
 
-It also wraps `MacroPopupFrame.IconSelector`'s **setup callback** (`SelectorMixin:Get/SetSetupCallback`) once at load: the selector drives every (recycled) grid button through that one callback with `(button, selectionIndex, icon)`, so the wrapper calls Blizzard's original, stashes the current fileID on the button, and attaches an idempotent hover tooltip showing the icon's `Interface\Icons\<name>` path.
+It also wraps `MacroPopupFrame.IconSelector`'s **setup callback** (`SelectorMixin:Get/SetSetupCallback`) once at load: the selector drives every (recycled) grid button through that one callback with `(button, selectionIndex, icon)`, so the wrapper calls Blizzard's original, stashes the current fileID on the button, and attaches an idempotent hover tooltip showing the icon's bare name.
 
 ---
 
@@ -75,8 +75,8 @@ injectSearchBox(frame)    -- one-time injection; grows frame height by SEARCH_H 
 
 installTooltips(selector) -- one-time wrap of the IconSelector setup callback; per button
                           -- stores button._bmiIcon (current fileID) and hooks OnEnter/OnLeave
-                          -- once (button._bmiHooked). tooltipOnEnter shows iconName(icon) as
-                          -- an Interface\Icons path, or "fileID <n>" when unmapped
+                          -- once (button._bmiHooked). tooltipOnEnter shows iconName(icon) —
+                          -- the bare icon name, or "fileID <n>" when unmapped
 ```
 
 ---

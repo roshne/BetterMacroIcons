@@ -47,7 +47,7 @@ local function tooltipOnEnter(button)
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     local name = iconName(icon)
     if name ~= "" then
-        GameTooltip:SetText("Interface\\Icons\\" .. name)
+        GameTooltip:SetText(name)
     else
         GameTooltip:SetText("fileID " .. icon)  -- not in the bundled list (e.g. brand-new art)
     end
