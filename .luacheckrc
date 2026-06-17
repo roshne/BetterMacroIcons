@@ -2,6 +2,10 @@ ignore = {"212", "21/_.*"}
 max_line_length = 160
 max_comment_line_length = 500
 
+-- CI installs the Lua toolchain into the workspace (leafo/gh-actions-lua and
+-- -luarocks); keep `luacheck .` off those trees.
+exclude_files = {".lua", ".luarocks", ".install"}
+
 std = {
   globals = { "_G" },
   read_globals = {
