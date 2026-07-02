@@ -1,11 +1,13 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
-local injected    = false
-local fileIDMap   = {}  -- fileID integer → lowercase icon name (built once per session)
-local nameIndex   = {}  -- [providerIndex] = searchable name string
-local filteredMap = {}  -- [displayIndex]  = providerIndex
-local searchText  = ""
+local injected      = false
+local fileIDMap     = {}  -- fileID integer → lowercase icon name (built once per session)
+local nameIndex     = {}  -- [providerIndex] = searchable name string
+local filteredMap   = {}  -- [displayIndex]  = providerIndex
+local searchText    = ""
+local prevSearch          -- search string filteredMap currently reflects; nil forces a full scan
+local SEARCH_DEBOUNCE = 100  -- ms to coalesce keystrokes before filtering
 
 local SEARCH_H = 26
 
@@ -81,22 +83,38 @@ local function rebuildNameIndex(frame)
     for i = 1, p:GetNumIcons() do
         nameIndex[i] = iconName(p:GetIconByIndex(i))
     end
+    prevSearch = nil  -- provider/index changed: the next filter must do a full scan
 end
 
 local function applyFilter(frame)
     local p = frame.iconDataProvider
-    wipe(filteredMap)
+
     if searchText == "" then
+        wipe(filteredMap)
         for i = 1, p:GetNumIcons() do
             filteredMap[i] = i
         end
+    elseif prevSearch and prevSearch ~= "" and searchText:find(prevSearch, 1, true) == 1 then
+        -- The new query extends the previous one, so its matches are a subset of the
+        -- current filteredMap — narrow it in place instead of rescanning the whole index.
+        local n = 0
+        for _, providerIdx in ipairs(filteredMap) do
+            if nameIndex[providerIdx]:find(searchText, 1, true) then
+                n = n + 1
+                filteredMap[n] = providerIdx
+            end
+        end
+        for i = #filteredMap, n + 1, -1 do filteredMap[i] = nil end
     else
+        wipe(filteredMap)
         for i, name in ipairs(nameIndex) do
             if name:find(searchText, 1, true) then
                 filteredMap[#filteredMap + 1] = i
             end
         end
     end
+    prevSearch = searchText
+
     frame.IconSelector:SetSelectionsDataProvider(
         function(idx) return p:GetIconByIndex(filteredMap[idx]) end,
         function()    return #filteredMap end
@@ -118,7 +136,10 @@ local function injectSearchBox(frame)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         searchText = self:GetText():lower()
-        applyFilter(frame)
+        -- Debounce: coalesce rapid keystrokes so we don't rescan the whole name index
+        -- on every key. ns:delay keeps a single pending timer (one search box), so a
+        -- new keystroke replaces the pending filter.
+        ns:delay(SEARCH_DEBOUNCE, function() applyFilter(frame) end)
     end)
     frame._bmiSearchBox = box
 end
