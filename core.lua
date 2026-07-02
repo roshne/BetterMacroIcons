@@ -1,11 +1,14 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
-local injected    = false
-local fileIDMap   = {}  -- fileID integer → lowercase icon name (built once per session)
-local nameIndex   = {}  -- [providerIndex] = searchable name string
-local filteredMap = {}  -- [displayIndex]  = providerIndex
-local searchText  = ""
+local injected      = false
+local fileIDMap     = {}  -- fileID integer → lowercase icon name (built once per session)
+local nameIndex     = {}  -- [providerIndex] = searchable name string
+local iconToProvider = {} -- icon value (fileID/texture) → providerIndex (reverse of the provider)
+local filteredMap   = {}  -- [displayIndex]  = providerIndex
+local searchText    = ""
+local prevSearch          -- search string filteredMap currently reflects; nil forces a full scan
+local SEARCH_DEBOUNCE = 100  -- ms to coalesce keystrokes before filtering
 
 local SEARCH_H = 26
 
@@ -78,30 +81,70 @@ end
 local function rebuildNameIndex(frame)
     local p = frame.iconDataProvider
     wipe(nameIndex)
+    wipe(iconToProvider)
     for i = 1, p:GetNumIcons() do
-        nameIndex[i] = iconName(p:GetIconByIndex(i))
+        local icon = p:GetIconByIndex(i)
+        nameIndex[i] = iconName(icon)
+        iconToProvider[icon] = i
     end
+    prevSearch = nil  -- provider/index changed: the next filter must do a full scan
 end
 
 local function applyFilter(frame)
     local p = frame.iconDataProvider
-    wipe(filteredMap)
+    local selector = frame.IconSelector
+
+    -- Remember which icon is currently highlighted (by value, via the installed
+    -- getter) so we can re-point the selection at its new display slot once
+    -- filtering shifts the indices — otherwise the highlight lands on the wrong
+    -- cell or vanishes while a filter is active.
+    local sel = selector:GetSelectedIndex()
+    local selIcon = sel and selector.getSelectionByIndex and selector.getSelectionByIndex(sel)
+    local selProvider = selIcon and iconToProvider[selIcon]
+
     if searchText == "" then
+        wipe(filteredMap)
         for i = 1, p:GetNumIcons() do
             filteredMap[i] = i
         end
+    elseif prevSearch and prevSearch ~= "" and searchText:find(prevSearch, 1, true) == 1 then
+        -- The new query extends the previous one, so its matches are a subset of the
+        -- current filteredMap — narrow it in place instead of rescanning the whole index.
+        local n = 0
+        for _, providerIdx in ipairs(filteredMap) do
+            if nameIndex[providerIdx]:find(searchText, 1, true) then
+                n = n + 1
+                filteredMap[n] = providerIdx
+            end
+        end
+        for i = #filteredMap, n + 1, -1 do filteredMap[i] = nil end
     else
+        wipe(filteredMap)
         for i, name in ipairs(nameIndex) do
             if name:find(searchText, 1, true) then
                 filteredMap[#filteredMap + 1] = i
             end
         end
     end
-    frame.IconSelector:SetSelectionsDataProvider(
+    prevSearch = searchText
+
+    selector:SetSelectionsDataProvider(
         function(idx) return p:GetIconByIndex(filteredMap[idx]) end,
         function()    return #filteredMap end
     )
-    frame.IconSelector:UpdateSelections()
+
+    -- Translate the remembered selection to its new display index (nil clears it).
+    local newSel
+    if selProvider then
+        if searchText == "" then
+            newSel = selProvider  -- identity map: display index == provider index
+        else
+            for d = 1, #filteredMap do
+                if filteredMap[d] == selProvider then newSel = d; break end
+            end
+        end
+    end
+    selector:SetSelectedIndex(newSel)
 end
 
 local function injectSearchBox(frame)
@@ -118,7 +161,10 @@ local function injectSearchBox(frame)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         searchText = self:GetText():lower()
-        applyFilter(frame)
+        -- Debounce: coalesce rapid keystrokes so we don't rescan the whole name index
+        -- on every key. ns:delay keeps a single pending timer (one search box), so a
+        -- new keystroke replaces the pending filter.
+        ns:delay(SEARCH_DEBOUNCE, function() applyFilter(frame) end)
     end)
     frame._bmiSearchBox = box
 end
