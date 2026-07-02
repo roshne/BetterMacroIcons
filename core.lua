@@ -4,7 +4,6 @@ local ns = LibNAddOn(...)
 local injected      = false
 local fileIDMap     = {}  -- fileID integer → lowercase icon name (built once per session)
 local nameIndex     = {}  -- [providerIndex] = searchable name string
-local iconToProvider = {} -- icon value (fileID/texture) → providerIndex (reverse of the provider)
 local filteredMap   = {}  -- [displayIndex]  = providerIndex
 local searchText    = ""
 local prevSearch          -- search string filteredMap currently reflects; nil forces a full scan
@@ -81,26 +80,14 @@ end
 local function rebuildNameIndex(frame)
     local p = frame.iconDataProvider
     wipe(nameIndex)
-    wipe(iconToProvider)
     for i = 1, p:GetNumIcons() do
-        local icon = p:GetIconByIndex(i)
-        nameIndex[i] = iconName(icon)
-        iconToProvider[icon] = i
+        nameIndex[i] = iconName(p:GetIconByIndex(i))
     end
     prevSearch = nil  -- provider/index changed: the next filter must do a full scan
 end
 
 local function applyFilter(frame)
     local p = frame.iconDataProvider
-    local selector = frame.IconSelector
-
-    -- Remember which icon is currently highlighted (by value, via the installed
-    -- getter) so we can re-point the selection at its new display slot once
-    -- filtering shifts the indices — otherwise the highlight lands on the wrong
-    -- cell or vanishes while a filter is active.
-    local sel = selector:GetSelectedIndex()
-    local selIcon = sel and selector.getSelectionByIndex and selector.getSelectionByIndex(sel)
-    local selProvider = selIcon and iconToProvider[selIcon]
 
     if searchText == "" then
         wipe(filteredMap)
@@ -128,23 +115,11 @@ local function applyFilter(frame)
     end
     prevSearch = searchText
 
-    selector:SetSelectionsDataProvider(
+    frame.IconSelector:SetSelectionsDataProvider(
         function(idx) return p:GetIconByIndex(filteredMap[idx]) end,
         function()    return #filteredMap end
     )
-
-    -- Translate the remembered selection to its new display index (nil clears it).
-    local newSel
-    if selProvider then
-        if searchText == "" then
-            newSel = selProvider  -- identity map: display index == provider index
-        else
-            for d = 1, #filteredMap do
-                if filteredMap[d] == selProvider then newSel = d; break end
-            end
-        end
-    end
-    selector:SetSelectedIndex(newSel)
+    frame.IconSelector:UpdateSelections()
 end
 
 local function injectSearchBox(frame)
