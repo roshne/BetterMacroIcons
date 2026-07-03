@@ -54,7 +54,7 @@ Keep individual files to **200–300 lines maximum** (the bundled `icons.lua` da
 
 ## Lint
 
-`luacheck` is **strict** — any warning fails CI (`.github/workflows/test.yml`) and the repo lints clean; keep it that way. When you use a new WoW global, add it to `.luacheckrc`'s `read_globals`. Config lives in `.luacheckrc`.
+`luacheck` is **strict** — any warning fails CI (`.github/workflows/ci.yml`) and the repo lints clean; keep it that way. When you use a new WoW global, add it to `.luacheckrc`'s `read_globals`. Config lives in `.luacheckrc`.
 
 ## In-Game Debugging
 
