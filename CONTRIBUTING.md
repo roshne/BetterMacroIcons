@@ -44,7 +44,7 @@ local ns = select(2, ...)
   build, and the repo lints clean. Keep it that way. When you add a WoW global, add it to
   `read_globals`.
 - CI runs luacheck (and busted, if specs are ever added) on every PR and push to `main`
-  (`.github/workflows/test.yml`).
+  (`.github/workflows/ci.yml`).
 
 ## Regenerating the icon list
 
