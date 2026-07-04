@@ -7,12 +7,14 @@ max_comment_line_length = 500
 exclude_files = {".lua", ".luarocks", ".install"}
 
 std = {
-  globals = { "_G" },
+  -- StaticPopupDialogs is written (we register our BMI_ADD_TERM dialog), so it's a mutable global
+  globals = { "_G", "StaticPopupDialogs" },
   read_globals = {
     "ipairs",
     "next",
     "pairs",
     "select",
+    "table",
     "tostring",
     "type",
     "wipe",
@@ -31,6 +33,17 @@ std = {
 
     -- Blizzard_MacroUI globals (loaded by the time our hooks fire)
     "MacroPopupFrame",
+
+    -- scan.lua — spellbook scan for automatic spell-name search terms
+    "C_SpellBook",
+    "Enum",
+    "UnitRace",
+
+    -- aliases.lua — right-click context menu + add-term popup
+    "MenuUtil",
+    "StaticPopup_Show",
+    "ACCEPT",
+    "CANCEL",
 
     -- Suite dependency
     "LibNAddOn",

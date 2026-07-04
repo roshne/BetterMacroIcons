@@ -7,6 +7,7 @@
     "next",
     "pairs",
     "select",
+    "table",
     "tostring",
     "type",
     "wipe",
@@ -17,6 +18,16 @@
     "SearchBoxTemplate_OnTextChanged",
     "GameTooltip",
     "MacroPopupFrame",
+
+    "C_SpellBook",
+    "Enum",
+    "UnitRace",
+
+    "MenuUtil",
+    "StaticPopup_Show",
+    "StaticPopupDialogs",
+    "ACCEPT",
+    "CANCEL",
 
     "LibNAddOn"
   ]

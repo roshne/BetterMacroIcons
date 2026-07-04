@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-Standalone WoW Retail addon by Roshne (Interface 120000+). Injects a live-search box and filename tooltips into the macro icon picker (`MacroPopupFrame`). Depends on **LibNAddOn**. No build step, no package manager, no saved variables. All in-game testing is done via `/reload`.
+Standalone WoW Retail addon by Roshne (Interface 120000+). Injects a live-search box, spell-name/custom search terms, and informative tooltips into the macro icon picker (`MacroPopupFrame`). Depends on **LibNAddOn**. Stores account-wide saved variables (`BetterMacroIconsDB`: curated aliases + pooled spellbook terms). The spellbook scan is a **removable module** (`scan.lua`) behind a single seam. No build step, no package manager. All in-game testing is done via `/reload`.
 
 ## Coding Conventions
 
@@ -54,7 +54,7 @@ Keep individual files to **200–300 lines maximum** (the bundled `icons.lua` da
 
 ## Lint
 
-`luacheck` is **strict** — any warning fails CI (`.github/workflows/ci.yml`) and the repo lints clean; keep it that way. When you use a new WoW global, add it to `.luacheckrc`'s `read_globals`. Config lives in `.luacheckrc`.
+`luacheck` is **strict** — any warning fails CI (`.github/workflows/ci.yml`) and the repo lints clean; keep it that way. When you use a new WoW global, add it to `.luacheckrc`'s `read_globals` **and** the mirrored `.luarc.json` `diagnostics.globals` (CI only lints the former; the latter feeds the editor). Globals you **write to** (e.g. `StaticPopupDialogs`) go in `.luacheckrc`'s `globals`, not `read_globals`.
 
 ## In-Game Debugging
 
