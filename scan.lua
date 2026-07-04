@@ -13,6 +13,21 @@ local ns = select(2, ...)
 
 local SCAN_DEBOUNCE = 300  -- ms to coalesce SPELLS_CHANGED bursts into one scan
 
+-- Playable-race data for `/bmi coverage`, mirrored from the hand-verified suite source
+-- Warbandeer_Collected/data/models.lua (its FACTIONS list + RaceAlias). BMI is a separate
+-- addon so it can't read that namespace at runtime; this is a small copy. PLAYABLE_RACES is the
+-- 25 canonical playable races; RACE_ALIAS collapses faction/neutral variants that share a racial
+-- set onto their canonical id (Pandaren 24/26 → 25, Dracthyr 70 → 52, Earthen 85 → 84). Race
+-- keys are canonicalised at store time, and coverage resolves names live via GetRaceInfo so an
+-- unknown/future id degrades gracefully.
+local PLAYABLE_RACES = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 25, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 52, 84,
+}
+local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84 }
+local function canonRace(raceID)
+    return RACE_ALIAS[raceID] or raceID
+end
+
 local mergedSpellTerms = {}  -- [fileID] = " name1 name2 " — union of every spec/race section
 local scanPending
 
@@ -64,7 +79,7 @@ local function scanSpells(force)
     local bySpec, byRace = stores()
 
     local _, raceFile, raceID = UnitRace("player")
-    local raceKey = raceID or raceFile
+    local raceKey = raceID and canonRace(raceID) or raceFile
     byRace[raceKey] = (not force and byRace[raceKey]) or {}
 
     local wipedSpec = force and {} or nil
@@ -129,3 +144,65 @@ ns:registerCommand("scan", nil, function()
     if ns.refreshSearch then ns.refreshSearch() end
     ns:Print(("scanned spellbook — %d icons now carry spell names"):format(count))
 end, "Rescan your spellbook for spell-name search terms")
+
+-- Report which class/specs and races have been captured — the gaps to fill by logging into
+-- alts, en route to a complete bundled dataset. Specs are enumerated authoritatively from the
+-- API (real spec IDs to match the store keys); races compare captured keys to PLAYABLE_RACES.
+ns:registerCommand("coverage", nil, function()
+    local bySpec, byRace = stores()
+
+    local specTotal, specHave, missingSpecs = 0, 0, {}
+    for ci = 1, GetNumClasses() do
+        local className, _, classID = GetClassInfo(ci)
+        local missing = {}
+        for si = 1, C_SpecializationInfo.GetNumSpecializationsForClassID(classID) do
+            local specID, specName = GetSpecializationInfoForClassID(classID, si)
+            if specID then
+                specTotal = specTotal + 1
+                if bySpec[specID] then
+                    specHave = specHave + 1
+                else
+                    missing[#missing + 1] = specName
+                end
+            end
+        end
+        if #missing > 0 then
+            missingSpecs[#missingSpecs + 1] = className .. ": " .. table.concat(missing, ", ")
+        end
+    end
+
+    local raceTotal, raceHave, missingRaces, playable = 0, 0, {}, {}
+    for _, id in ipairs(PLAYABLE_RACES) do
+        playable[id] = true
+        local info = C_CreatureInfo.GetRaceInfo(id)
+        if info then  -- recognised by this client (unknown/future ids drop out)
+            raceTotal = raceTotal + 1
+            if byRace[id] then raceHave = raceHave + 1 else missingRaces[#missingRaces + 1] = info.raceName end
+        end
+    end
+
+    -- Captured races absent from PLAYABLE_RACES — surfaced so the bundled list can be updated.
+    local untracked = {}
+    for id in pairs(byRace) do
+        local canon = type(id) == "number" and canonRace(id) or id
+        if not playable[canon] then
+            local info = type(canon) == "number" and C_CreatureInfo.GetRaceInfo(canon)
+            untracked[#untracked + 1] = (info and info.raceName or tostring(canon)) .. " (" .. tostring(id) .. ")"
+        end
+    end
+
+    ns:Print(("coverage — specs %d/%d, races %d/%d"):format(specHave, specTotal, raceHave, raceTotal))
+    if #missingSpecs > 0 then
+        ns:Print("missing specs:")
+        for _, line in ipairs(missingSpecs) do ns:Print("  " .. line) end
+    end
+    if #missingRaces > 0 then
+        ns:Print("missing races: " .. table.concat(missingRaces, ", "))
+    end
+    if #untracked > 0 then
+        ns:Print("captured but not in race list: " .. table.concat(untracked, ", "))
+    end
+    if #missingSpecs == 0 and #missingRaces == 0 then
+        ns:Print("all class/specs and races captured — ready to bundle!")
+    end
+end, "Show which class/specs and races still need capturing")

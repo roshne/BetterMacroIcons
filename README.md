@@ -17,13 +17,14 @@ WoW 12.0 stopped exposing icon names through the macro API (the picker now serve
 
 Open the macro UI (`/macro`), create or edit a macro, and click its icon button. The search box appears above the icon grid; start typing to filter. Hover an icon to see its name and terms, or **right-click** it to add/remove your own search terms.
 
-Spell names are gathered automatically the first time you log in each character (and whenever you learn new spells). Run `/bmi scan` any time you want to force a re-read of the current character's spellbook.
+Spell names are gathered automatically the first time you log in each character (and whenever you learn new spells). Run `/bmi scan` any time you want to force a re-read of the current character's spellbook, and `/bmi coverage` to see which class/specs and races you've captured so far versus which are still missing.
 
 ## Commands
 
 | Command | Description |
 |---|---|
 | `/bmi scan` | Re-read the current character's spellbook for spell-name search terms |
+| `/bmi coverage` | Show which class/specs and races have been captured, and which are still missing |
 | `/bmi debug` | Print search diagnostics (open the icon picker first) |
 
 ## Dependencies

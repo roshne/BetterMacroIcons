@@ -39,6 +39,13 @@ std = {
     "Enum",
     "UnitRace",
 
+    -- scan.lua — /bmi coverage: enumerate class/specs + resolve race names
+    "GetNumClasses",
+    "GetClassInfo",
+    "C_SpecializationInfo",
+    "GetSpecializationInfoForClassID",
+    "C_CreatureInfo",
+
     -- aliases.lua — right-click context menu + add-term popup
     "MenuUtil",
     "StaticPopup_Show",

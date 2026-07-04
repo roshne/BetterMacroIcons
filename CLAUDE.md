@@ -58,7 +58,7 @@ Keep individual files to **200–300 lines maximum** (the bundled `icons.lua` da
 
 ## In-Game Debugging
 
-Use `/dump <expr>` or `/run <lua>` to inspect live data (output appears in chat, can't be copied, truncates if long). `/bmi debug` prints search diagnostics (open the icon picker first).
+Use `/dump <expr>` or `/run <lua>` to inspect live data (output appears in chat, can't be copied, truncates if long). `/bmi debug` prints search diagnostics (open the icon picker first); `/bmi coverage` lists captured/missing class-specs and races.
 
 ## Key Gotchas
 

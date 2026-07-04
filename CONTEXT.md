@@ -1,6 +1,6 @@
 # BetterMacroIcons
 
-**Deps:** LibNAddOn · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi scan`, `/bmi debug` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
+**Deps:** LibNAddOn · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi scan`, `/bmi coverage`, `/bmi debug` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
 
 Injects a live-search box into `MacroPopupFrame` (the icon picker shown when you click the icon button in the macro editor). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
 
@@ -12,7 +12,7 @@ Injects a live-search box into `MacroPopupFrame` (the icon picker shown when you
 |---|---|
 | `icons.lua` | `ns.iconNames` — bundled array of ~32.5k `Interface\Icons\` texture basenames (lowercase), generated from the community wow-listfile. Loaded before `core.lua`. Regenerate when a patch adds icons (see **Regenerating the icon list**). |
 | `core.lua` | **Setup file** (calls `LibNAddOn`, so it loads first). fileID→name map, search box injection, filter logic, multi-token matching, tooltips + right-click wiring. Exposes `ns.IconName` and `ns.refreshSearch`; reads the two optional term seams defensively. |
-| `scan.lua` | **Removable module.** Spellbook scan → `ns.SpellTermsFor(fileID)`. Spec/race-keyed pooled store. Delete this file + its `.toc` line and the addon still works (name search + aliases) without spell terms. |
+| `scan.lua` | **Removable module.** Spellbook scan → `ns.SpellTermsFor(fileID)`. Spec/race-keyed pooled store, plus `/bmi coverage` (which class/specs & races are captured/missing). Delete this file + its `.toc` line and the addon still works (name search + aliases) without spell terms. |
 | `aliases.lua` | Curated user aliases: `MigrateDB`, `ns.AliasTermsFor(fileID, name)`, and the right-click context menu + add-term popup (`ns.onIconRightClick`). |
 
 **TOC load order:** `icons.lua`, `core.lua`, `scan.lua`, `aliases.lua`. `core.lua` is first because it calls `LibNAddOn(...)`; `scan.lua`/`aliases.lua` make load-time `ns:registerEvent`/`ns:registerCommand` calls that need the wired namespace. All cross-module reads happen at runtime via `ns`, so beyond "setup first" the order is not otherwise significant.
@@ -60,7 +60,12 @@ searchTokens= {}  -- whitespace tokens of searchText (scratch, rebuilt per filte
 -- scan.lua (persisted in ns.db, lazy-seeded here)
 db.spellTermsBySpec = { [specID] = { [fileID] = " name1 name2 " } }  -- class/spec spells
 db.spellTermsByRace = { [raceID] = { [fileID] = " name1 name2 " } }  -- racials + general line
+                                                                    -- raceID canonicalised (canonRace)
 mergedSpellTerms    = { [fileID] = " name1 name2 " }  -- in-memory union of all sections
+
+-- scan.lua coverage data (mirrored from Warbandeer_Collected/data/models.lua — hand-verified)
+PLAYABLE_RACES = { 1,2,3,…,52,84 }               -- 25 canonical playable race IDs
+RACE_ALIAS     = { [24]=25,[26]=25,[70]=52,[85]=84 }  -- faction/neutral variants → canonical
 
 -- aliases.lua (persisted in ns.db, seeded by MigrateDB)
 db.aliases  = { [nameKey] = { "term1", "term2" } }  -- nameKey = IconName(fileID) or "fileid:N"
@@ -88,11 +93,13 @@ tooltipOnEnter(button)    -- name line + "Spells:"/"Aliases:" lines (via the sea
 ns.refreshSearch()        -- rebuildNameIndex + applyFilter if the picker is shown
 
 -- scan.lua
-scanSpells(force)         -- scan Player bank into bySpec[specID]/byRace[raceID]; force wipes this
-                          -- char's sections first, else additive merge; rebuilds merged; returns count
+scanSpells(force)         -- scan Player bank into bySpec[specID]/byRace[canonRace(raceID)]; force
+                          -- wipes this char's sections first, else additive merge; rebuilds; returns count
 rebuildMerged()           -- union all spec+race sections into mergedSpellTerms (deduped)
 ns.SpellTermsFor(fileID)  -- pooled spell names for an icon (or "")
 queueScan()               -- SPELLS_CHANGED debounce via ns:after(300) (not ns:delay)
+canonRace(raceID)         -- faction/neutral variant → canonical race id (RACE_ALIAS)
+/bmi coverage             -- specs enumerated via API, races vs PLAYABLE_RACES; prints missing + untracked
 
 -- aliases.lua
 ns:MigrateDB()            -- seed db.version=1, db.aliases={} (non-destructive)
@@ -130,6 +137,7 @@ ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-
 | `MacroPopupFrame` | Blizzard_MacroUI icon picker frame |
 | `CreateFrame`, `hooksecurefunc`, `wipe`, `table` | Standard WoW/Lua API |
 | `C_SpellBook`, `Enum`, `UnitRace` | `scan.lua` — spellbook scan + spec/race keys |
+| `GetNumClasses`, `GetClassInfo`, `C_SpecializationInfo`, `GetSpecializationInfoForClassID`, `C_CreatureInfo` | `scan.lua` — `/bmi coverage`: enumerate class/specs + resolve race names |
 | `MenuUtil`, `StaticPopup_Show`, `StaticPopupDialogs`, `ACCEPT`, `CANCEL` | `aliases.lua` — right-click menu + add-term popup (`StaticPopupDialogs` is a **writable** global) |
 
 Keep `.luacheckrc` and `.luarc.json` in sync when adding a global (CI only lints the former; the latter feeds the editor).
@@ -160,5 +168,6 @@ Wrap each line as `"<name>",` inside `ns.iconNames = { … }`. Names that don't 
 - **Right-click via `OnMouseUp`, not `RegisterForClicks`** — registering clicks on the selector button would disturb Blizzard's left-click selection. The handler reads `button._bmiIcon` (refreshed each setup-callback run) so recycled buttons stay correct.
 - **`SPELLS_CHANGED` upkeep uses `ns:after` (not `ns:delay`)** — `ns:delay` keeps a single timer that core already uses for the keystroke debounce; sharing it would drop one or the other. `ns:after` allows an independent debounced scan.
 - **Additive merge = no redundant rescans.** Default (non-forced) scans only add names not already recorded, so a fully-captured spec/race and any alt of it do no meaningful work. `/bmi scan` forces a wipe + refill of the current character's spec/race sections.
+- **Coverage race data is a mirror.** `PLAYABLE_RACES` / `RACE_ALIAS` in `scan.lua` are copied from the hand-verified `Warbandeer_Collected/data/models.lua` (BMI can't read that addon's namespace at runtime). Race keys are canonicalised at store time; `/bmi coverage` resolves names via `GetRaceInfo` and skips ids the client doesn't recognise, so a stale list degrades gracefully and any captured race not in the list is reported as **untracked** (the cue to update the mirror). Specs need no bundled list — they enumerate from the API.
 - **`fileIDMap` / spell scan are session/spec-stable** — `buildFileIDMap` is a no-op after first call; spec/race sections are captured once and pooled.
 - **Tooltips are grid-only** — the "Currently Selected" preview button (`SelectedIconButton`) is intentionally not covered.
