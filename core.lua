@@ -38,20 +38,38 @@ local function iconName(tex)
     return (base:gsub("%.[^%.]+$", "")):lower()
 end
 
+-- Exposed so the term modules (scan.lua / aliases.lua) can key by icon name.
+---@class BetterMacroIcons
+---@field IconName fun(tex: string|integer): string
+---@field refreshSearch fun()
+ns.IconName = iconName
+
 -- Tooltip on each grid icon showing its texture path. The IconSelector drives every
 -- (recycled) button through a single setup callback that receives the button and its
 -- fileID; we wrap Blizzard's callback to stash the current fileID on the button and
 -- attach an idempotent OnEnter/OnLeave. Reading button._bmiIcon (refreshed each setup)
 -- keeps the tooltip correct as buttons are reused while scrolling/filtering.
+-- Trimmed extra-terms line from a seam, or "" when the module is absent / has nothing.
+local function trimmed(s)
+    return (s or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
 local function tooltipOnEnter(button)
     local icon = button._bmiIcon
     if not icon then return end
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     local name = iconName(icon)
-    if name ~= "" then
-        GameTooltip:SetText(name)
-    else
-        GameTooltip:SetText("fileID " .. icon)  -- not in the bundled list (e.g. brand-new art)
+    GameTooltip:SetText(name ~= "" and name or ("fileID " .. icon))  -- fileID: not in the bundled list
+
+    -- Show WHY the icon matched: its known spell name(s) and any curated aliases. Both are
+    -- optional modules, so guard the seams — absent module simply omits the line.
+    local spells = trimmed(ns.SpellTermsFor and ns.SpellTermsFor(icon))
+    if spells ~= "" then
+        GameTooltip:AddLine("Spells: " .. spells, 0.6, 0.6, 0.6, true)
+    end
+    local aliases = trimmed(ns.AliasTermsFor and ns.AliasTermsFor(icon, name))
+    if aliases ~= "" then
+        GameTooltip:AddLine("Aliases: " .. aliases, 0.6, 0.6, 0.6, true)
     end
     GameTooltip:Show()
 end
@@ -60,9 +78,12 @@ local function tooltipOnLeave()
     GameTooltip:Hide()
 end
 
-local function installTooltips(selector)
-    if selector._bmiTooltips then return end
-    selector._bmiTooltips = true
+-- Per (recycled) grid button: keep _bmiIcon current, and attach the hover tooltip plus a
+-- right-click handler (add/manage curated search terms). OnMouseUp is used rather than
+-- RegisterForClicks so Blizzard's left-click selection is left untouched.
+local function installButtonHandlers(selector)
+    if selector._bmiHandlers then return end
+    selector._bmiHandlers = true
     local original = selector:GetSetupCallback()
     selector:SetSetupCallback(function(button, selectionIndex, icon)
         if original then original(button, selectionIndex, icon) end
@@ -71,17 +92,46 @@ local function installTooltips(selector)
             button._bmiHooked = true
             button:HookScript("OnEnter", tooltipOnEnter)
             button:HookScript("OnLeave", tooltipOnLeave)
+            button:HookScript("OnMouseUp", function(self, mouseButton)
+                if mouseButton == "RightButton" and ns.onIconRightClick then
+                    ns.onIconRightClick(self, self._bmiIcon)
+                end
+            end)
         end
     end)
 end
 
 -- Rebuild the name index from the current data provider.
 -- Must be called when the provider changes (OnShow, filter type change).
+-- Whitespace tokens of the current query, rebuilt per filter pass (shared scratch table).
+local searchTokens = {}
+local function tokenize(str)
+    wipe(searchTokens)
+    for tok in str:gmatch("%S+") do
+        searchTokens[#searchTokens + 1] = tok
+    end
+    return searchTokens
+end
+
+-- Multi-token AND: the entry matches only if it contains every token (order-independent).
+local function matchesAll(name, tokens)
+    for _, t in ipairs(tokens) do
+        if not name:find(t, 1, true) then return false end
+    end
+    return true
+end
+
 local function rebuildNameIndex(frame)
     local p = frame.iconDataProvider
     wipe(nameIndex)
     for i = 1, p:GetNumIcons() do
-        nameIndex[i] = iconName(p:GetIconByIndex(i))
+        local tex = p:GetIconByIndex(i)
+        local name = iconName(tex)
+        -- Fold in the optional term modules' searchable text (spell names + curated aliases).
+        -- Guarded so either module can be absent; search is plain substring over the blob.
+        local extra = ((ns.SpellTermsFor and ns.SpellTermsFor(tex)) or "")
+            .. " " .. ((ns.AliasTermsFor and ns.AliasTermsFor(tex, name)) or "")
+        nameIndex[i] = name .. " " .. extra
     end
     prevSearch = nil  -- provider/index changed: the next filter must do a full scan
 end
@@ -95,20 +145,23 @@ local function applyFilter(frame)
             filteredMap[i] = i
         end
     elseif prevSearch and prevSearch ~= "" and searchText:find(prevSearch, 1, true) == 1 then
-        -- The new query extends the previous one, so its matches are a subset of the
-        -- current filteredMap — narrow it in place instead of rescanning the whole index.
+        -- The new query is a string-prefix extension of the previous one, so each token's
+        -- requirement only tightened — its matches are a subset of the current filteredMap.
+        -- Narrow it in place instead of rescanning the whole index.
+        local tokens = tokenize(searchText)
         local n = 0
         for _, providerIdx in ipairs(filteredMap) do
-            if nameIndex[providerIdx]:find(searchText, 1, true) then
+            if matchesAll(nameIndex[providerIdx], tokens) then
                 n = n + 1
                 filteredMap[n] = providerIdx
             end
         end
         for i = #filteredMap, n + 1, -1 do filteredMap[i] = nil end
     else
+        local tokens = tokenize(searchText)
         wipe(filteredMap)
         for i, name in ipairs(nameIndex) do
-            if name:find(searchText, 1, true) then
+            if matchesAll(name, tokens) then
                 filteredMap[#filteredMap + 1] = i
             end
         end
@@ -144,10 +197,19 @@ local function injectSearchBox(frame)
     frame._bmiSearchBox = box
 end
 
+-- Re-index and re-filter the live picker after the term data changes (a scan finished, an
+-- alias was added/removed). No-op when the picker isn't open. Exposed to scan.lua/aliases.lua.
+function ns.refreshSearch()
+    if MacroPopupFrame and MacroPopupFrame:IsShown() then
+        rebuildNameIndex(MacroPopupFrame)
+        applyFilter(MacroPopupFrame)
+    end
+end
+
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
     if addonName ~= "Blizzard_MacroUI" then return end
 
-    installTooltips(MacroPopupFrame.IconSelector)
+    installButtonHandlers(MacroPopupFrame.IconSelector)
 
     MacroPopupFrame:HookScript("OnShow", function(frame)
         injectSearchBox(frame)
@@ -174,18 +236,20 @@ ns:registerCommand("debug", nil, function()
     local mapCount = 0
     for _ in pairs(fileIDMap) do mapCount = mapCount + 1 end
     ns:Print("fileIDMap: " .. mapCount .. " entries")
-
-    local total, named = #nameIndex, 0
-    for _, v in ipairs(nameIndex) do
-        if v ~= "" then named = named + 1 end
-    end
-    ns:Print("nameIndex: " .. named .. " named / " .. total .. " total")
+    ns:Print("nameIndex: " .. #nameIndex .. " entries")
 
     if MacroPopupFrame and MacroPopupFrame.iconDataProvider then
         local p = MacroPopupFrame.iconDataProvider
-        ns:Print("provider total: " .. p:GetNumIcons())
-        local icon2 = p:GetIconByIndex(2)
-        ns:Print("GetIconByIndex(2): " .. type(icon2) .. " = " .. tostring(icon2))
+        local total = p:GetNumIcons()
+        -- Count, within the current filter tab, how many icons carry each kind of extra term
+        -- (guarded so it still works if either term module is removed).
+        local withSpell, withAlias = 0, 0
+        for i = 1, total do
+            local tex = p:GetIconByIndex(i)
+            if ns.SpellTermsFor and ns.SpellTermsFor(tex) ~= "" then withSpell = withSpell + 1 end
+            if ns.AliasTermsFor and ns.AliasTermsFor(tex, iconName(tex)) ~= "" then withAlias = withAlias + 1 end
+        end
+        ns:Print(("provider %d icons — spell-tagged %d, alias-tagged %d"):format(total, withSpell, withAlias))
     else
         ns:Print("open the icon popup first")
     end

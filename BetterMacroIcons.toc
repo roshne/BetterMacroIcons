@@ -6,7 +6,12 @@
 ## Category: User Interface
 ## X-License: Apache-2.0
 ## Dependencies: LibNAddOn
+## SavedVariables: BetterMacroIconsDB
+## X-NUI-DB: BetterMacroIconsDB
+## X-NUI-DB-VERSION: 1
 ## X-NUI-COMMANDS: /bmi
 
 icons.lua
 core.lua
+scan.lua
+aliases.lua
