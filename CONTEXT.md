@@ -65,7 +65,7 @@ db.spellTermsByRace = { [raceID] = { [fileID] = " name1 name2 " } }  -- racials 
 mergedSpellTerms    = { [fileID] = " name1 name2 " }  -- in-memory union of all sections
 
 -- scan.lua coverage data (mirrored from Warbandeer_Collected/data/models.lua — hand-verified)
-PLAYABLE_RACES = { 1,2,3,…,52,84 }               -- 25 canonical playable race IDs
+PLAYABLE_RACES = { 1,2,3,…,84,86 }               -- 26 canonical playable race IDs (86 = Haranir)
 RACE_ALIAS     = { [24]=25,[26]=25,[70]=52,[85]=84 }  -- faction/neutral variants → canonical
 
 -- aliases.lua (persisted in ns.db, seeded by MigrateDB)

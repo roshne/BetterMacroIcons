@@ -17,14 +17,16 @@ local SCAN_DEBOUNCE = 300  -- ms to coalesce SPELLS_CHANGED bursts into one scan
 -- Playable-race data for `/bmi coverage`, mirrored from the hand-verified suite source
 -- Warbandeer_Collected/data/models.lua (its FACTIONS list + RaceAlias). BMI is a separate
 -- addon so it can't read that namespace at runtime; this is a small copy. PLAYABLE_RACES is the
--- 25 canonical playable races; RACE_ALIAS collapses faction/neutral variants that share a racial
--- set onto their canonical id (Pandaren 24/26 → 25, Dracthyr 70 → 52, Earthen 85 → 84). Race
--- keys are canonicalised at store time, and coverage resolves names live via GetRaceInfo so an
--- unknown/future id degrades gracefully.
+-- 26 canonical playable races; RACE_ALIAS collapses faction/neutral variants that share a racial
+-- set onto their canonical id (Pandaren 24/26 → 25, Dracthyr 70 → 52, Earthen 85 → 84,
+-- Haranir 91 → 86). Race keys are canonicalised at store time, and coverage resolves names live
+-- via GetRaceInfo so an unknown/future id degrades gracefully. Haranir (both-faction, like
+-- Earthen) is a Midnight race not yet in models.lua — added here from live; its two faction ids
+-- (86 and 91) are both confirmed in-game. Sync back to models.lua.
 local PLAYABLE_RACES = {
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 25, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 52, 84,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 25, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 52, 84, 86,
 }
-local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84 }
+local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84, [91] = 86 }
 local function canonRace(raceID)
     return RACE_ALIAS[raceID] or raceID
 end
