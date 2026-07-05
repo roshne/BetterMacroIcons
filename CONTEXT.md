@@ -1,6 +1,6 @@
 # BetterMacroIcons
 
-**Deps:** LibNAddOn · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi scan`, `/bmi coverage`, `/bmi debug` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
+**Deps:** LibNAddOn · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi scan`, `/bmi coverage`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
 
 Injects a live-search box into `MacroPopupFrame` (the icon picker shown when you click the icon button in the macro editor). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
 
@@ -14,8 +14,9 @@ Injects a live-search box into `MacroPopupFrame` (the icon picker shown when you
 | `core.lua` | **Setup file** (calls `LibNAddOn`, so it loads first). fileID→name map, search box injection, filter logic, multi-token matching, tooltips + right-click wiring. Exposes `ns.IconName` and `ns.refreshSearch`; reads the two optional term seams defensively. |
 | `scan.lua` | **Removable module.** Spellbook scan → `ns.SpellTermsFor(fileID)`. Spec/race-keyed pooled store, plus `/bmi coverage` (which class/specs & races are captured/missing). Delete this file + its `.toc` line and the addon still works (name search + aliases) without spell terms. |
 | `aliases.lua` | Curated user aliases: `MigrateDB`, `ns.AliasTermsFor(fileID, name)`, and the right-click context menu + add-term popup (`ns.onIconRightClick`). |
+| `cleanup.lua` | **Removable module.** Registers `/bmi cleanup [preview]` — deletes duplicate macros leaked by VuhDo (`VuhDoDCShieldData`/`Names`) and Plumber (`Plumber Housing Macro`). `LEAK_MACROS` name list + count/delete over both macro blocks (account + character, base from `Constants.MacroConsts.MAX_ACCOUNT_MACROS`). No DB, no seams — delete the file + its `.toc` line to remove. |
 
-**TOC load order:** `icons.lua`, `core.lua`, `scan.lua`, `aliases.lua`. `core.lua` is first because it calls `LibNAddOn(...)`; `scan.lua`/`aliases.lua` make load-time `ns:registerEvent`/`ns:registerCommand` calls that need the wired namespace. All cross-module reads happen at runtime via `ns`, so beyond "setup first" the order is not otherwise significant.
+**TOC load order:** `icons.lua`, `core.lua`, `scan.lua`, `aliases.lua`, `cleanup.lua`. `core.lua` is first because it calls `LibNAddOn(...)`; `scan.lua`/`aliases.lua`/`cleanup.lua` make load-time `ns:registerEvent`/`ns:registerCommand` calls that need the wired namespace. All cross-module reads happen at runtime via `ns`, so beyond "setup first" the order is not otherwise significant.
 
 ---
 
@@ -139,6 +140,7 @@ ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-
 | `C_SpellBook`, `Enum`, `UnitRace` | `scan.lua` — spellbook scan + spec/race keys |
 | `GetNumClasses`, `GetClassInfo`, `C_SpecializationInfo`, `GetSpecializationInfoForClassID`, `C_CreatureInfo` | `scan.lua` — `/bmi coverage`: enumerate class/specs + resolve race names |
 | `MenuUtil`, `StaticPopup_Show`, `StaticPopupDialogs`, `ACCEPT`, `CANCEL` | `aliases.lua` — right-click menu + add-term popup (`StaticPopupDialogs` is a **writable** global) |
+| `InCombatLockdown`, `GetNumMacros`, `GetMacroInfo`, `GetMacroIndexByName`, `DeleteMacro`, `Constants`, `MAX_ACCOUNT_MACROS` | `cleanup.lua` — `/bmi cleanup`: enumerate + delete leaked macros (`Constants.MacroConsts.MAX_ACCOUNT_MACROS` with `MAX_ACCOUNT_MACROS`/`120` fallback for the character-block base) |
 
 Keep `.luacheckrc` and `.luarc.json` in sync when adding a global (CI only lints the former; the latter feeds the editor).
 
