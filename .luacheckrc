@@ -6,6 +6,10 @@ max_comment_line_length = 500
 -- -luarocks); keep `luacheck .` off those trees.
 exclude_files = {".lua", ".luarocks", ".install"}
 
+-- Generated bundled-terms data: one long machine-generated line per spec/race section
+-- (matches `/bmi export` output), so exempt it from the line-length limit.
+files["data/spellterms.lua"] = { max_line_length = false }
+
 std = {
   -- Written globals (mutable): StaticPopupDialogs (we register BMI_ADD_TERM); MacroPopupFrame
   -- (`/bmi open` sets its .mode field before showing it).

@@ -17,14 +17,16 @@ local SCAN_DEBOUNCE = 300  -- ms to coalesce SPELLS_CHANGED bursts into one scan
 -- Playable-race data for `/bmi coverage`, mirrored from the hand-verified suite source
 -- Warbandeer_Collected/data/models.lua (its FACTIONS list + RaceAlias). BMI is a separate
 -- addon so it can't read that namespace at runtime; this is a small copy. PLAYABLE_RACES is the
--- 25 canonical playable races; RACE_ALIAS collapses faction/neutral variants that share a racial
--- set onto their canonical id (Pandaren 24/26 → 25, Dracthyr 70 → 52, Earthen 85 → 84). Race
--- keys are canonicalised at store time, and coverage resolves names live via GetRaceInfo so an
--- unknown/future id degrades gracefully.
+-- 26 canonical playable races; RACE_ALIAS collapses faction/neutral variants that share a racial
+-- set onto their canonical id (Pandaren 24/26 → 25, Dracthyr 70 → 52, Earthen 85 → 84,
+-- Haranir 91 → 86). Race keys are canonicalised at store time, and coverage resolves names live
+-- via GetRaceInfo so an unknown/future id degrades gracefully. Haranir (both-faction, like
+-- Earthen) is a Midnight race not yet in models.lua — added here from live; its two faction ids
+-- (86 and 91) are both confirmed in-game. Sync back to models.lua.
 local PLAYABLE_RACES = {
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 25, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 52, 84,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 25, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 52, 84, 86,
 }
-local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84 }
+local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84, [91] = 86 }
 local function canonRace(raceID)
     return RACE_ALIAS[raceID] or raceID
 end
@@ -67,6 +69,13 @@ local function rebuildMerged()
     end
     for _, section in pairs(bySpec) do absorb(section) end
     for _, section in pairs(byRace) do absorb(section) end
+    -- Fold in the baseline shipped with the addon (data/spellterms.lua), so a fresh install has
+    -- coverage out of the box; live scans merge on top (deduped). Optional file — guarded.
+    local bundled = ns.bundledSpellTerms
+    if bundled then
+        for _, section in pairs(bundled.bySpec or {}) do absorb(section) end
+        for _, section in pairs(bundled.byRace or {}) do absorb(section) end
+    end
 end
 
 -- Scan the Player spellbook into the spec/race buckets. Each skill line's spells go to the
@@ -159,6 +168,9 @@ end, "Rescan your spellbook for spell-name search terms")
 -- API (real spec IDs to match the store keys); races compare captured keys to PLAYABLE_RACES.
 ns:registerCommand("coverage", nil, function()
     local bySpec, byRace = stores()
+    -- A spec/race counts as covered if either the live scan or the shipped baseline has it.
+    local bundled = ns.bundledSpellTerms or {}
+    local bunSpec, bunRace = bundled.bySpec or {}, bundled.byRace or {}
 
     local specTotal, specHave, missingSpecs = 0, 0, {}
     for ci = 1, GetNumClasses() do
@@ -168,7 +180,7 @@ ns:registerCommand("coverage", nil, function()
             local specID, specName = GetSpecializationInfoForClassID(classID, si)
             if specID then
                 specTotal = specTotal + 1
-                if bySpec[specID] then
+                if bySpec[specID] or bunSpec[specID] then
                     specHave = specHave + 1
                 else
                     missing[#missing + 1] = specName
@@ -186,7 +198,7 @@ ns:registerCommand("coverage", nil, function()
         local info = C_CreatureInfo.GetRaceInfo(id)
         if info then  -- recognised by this client (unknown/future ids drop out)
             raceTotal = raceTotal + 1
-            if byRace[id] then raceHave = raceHave + 1 else missingRaces[#missingRaces + 1] = info.raceName end
+            if byRace[id] or bunRace[id] then raceHave = raceHave + 1 else missingRaces[#missingRaces + 1] = info.raceName end
         end
     end
 
@@ -217,3 +229,60 @@ ns:registerCommand("coverage", nil, function()
 
     ns.ShowReport("BMI Coverage", lines)
 end, "Show which class/specs and races still need capturing")
+
+-- Merge two bucket-tables ({[key]={[fileID]=" names "}}) into one, deduped per icon.
+local function mergeBuckets(liveT, bunT)
+    local out = {}
+    local function fold(src)
+        for key, section in pairs(src) do
+            local dst = out[key] or {}
+            out[key] = dst
+            for fileID, names in pairs(section) do
+                for name in names:gmatch("%S+") do addName(dst, fileID, name) end
+            end
+        end
+    end
+    fold(bunT or {})
+    fold(liveT)
+    return out
+end
+
+-- Emit a bucket-table as sorted Lua-literal lines (deterministic → clean diffs).
+local function emitBuckets(lines, name, buckets)
+    lines[#lines + 1] = "  " .. name .. " = {"
+    local keys = {}
+    for k in pairs(buckets) do keys[#keys + 1] = k end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+        local fids = {}
+        for f in pairs(buckets[k]) do fids[#fids + 1] = f end
+        table.sort(fids)
+        local parts = {}
+        for _, f in ipairs(fids) do
+            parts[#parts + 1] = "[" .. f .. "]=" .. ("%q"):format(buckets[k][f])
+        end
+        lines[#lines + 1] = "    [" .. k .. "] = {" .. table.concat(parts, ",") .. "},"
+    end
+    lines[#lines + 1] = "  },"
+end
+
+-- Serialize the pooled terms (shipped baseline + this account's live scans, merged) as a
+-- ready-to-commit data/spellterms.lua, shown in the copy window. Paste it over that file to
+-- ship the current coverage as everyone's baseline.
+ns:registerCommand("export", nil, function()
+    local bySpec, byRace = stores()
+    local bundled = ns.bundledSpellTerms or {}
+    local lines = {
+        "---@class BetterMacroIcons",
+        "---@field bundledSpellTerms table",
+        "local ns = select(2, ...)",
+        "",
+        "-- Bundled baseline spell/racial search terms (generated by /bmi export). scan.lua's",
+        "-- rebuildMerged folds this under live scans, so a fresh install has coverage out of the box.",
+        "ns.bundledSpellTerms = {",
+    }
+    emitBuckets(lines, "bySpec", mergeBuckets(bySpec, bundled.bySpec))
+    emitBuckets(lines, "byRace", mergeBuckets(byRace, bundled.byRace))
+    lines[#lines + 1] = "}"
+    ns.ShowReport("BMI Export — paste into data/spellterms.lua", lines)
+end, "Dump the pooled spell terms as data/spellterms.lua (copy window)")
