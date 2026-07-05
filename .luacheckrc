@@ -7,8 +7,9 @@ max_comment_line_length = 500
 exclude_files = {".lua", ".luarocks", ".install"}
 
 std = {
-  -- StaticPopupDialogs is written (we register our BMI_ADD_TERM dialog), so it's a mutable global
-  globals = { "_G", "StaticPopupDialogs" },
+  -- Written globals (mutable): StaticPopupDialogs (we register BMI_ADD_TERM); MacroPopupFrame
+  -- (`/bmi open` sets its .mode field before showing it).
+  globals = { "_G", "StaticPopupDialogs", "MacroPopupFrame" },
   read_globals = {
     "ipairs",
     "next",
@@ -31,8 +32,16 @@ std = {
     -- Tooltip shown on icon hover
     "GameTooltip",
 
-    -- Blizzard_MacroUI globals (loaded by the time our hooks fire)
-    "MacroPopupFrame",
+    -- Blizzard_MacroUI globals (loaded by the time our hooks fire; MacroPopupFrame is a
+    -- *written* global — see `globals` above). MacroFrame + the popup mode enum are used by
+    -- `/bmi open` to open the picker directly.
+    "MacroFrame",
+    "IconSelectorPopupFrameModes",
+
+    -- `/bmi open` — load + show the macro UI on demand
+    "InCombatLockdown",
+    "C_AddOns",
+    "ShowUIPanel",
 
     -- scan.lua — spellbook scan for automatic spell-name search terms
     "C_SpellBook",
@@ -53,7 +62,7 @@ std = {
     "CANCEL",
 
     -- cleanup.lua — /bmi cleanup: delete leaked VuhDo/Plumber duplicate macros
-    "InCombatLockdown",
+    -- (InCombatLockdown is listed under the /bmi open globals above)
     "GetNumMacros",
     "GetMacroInfo",
     "GetMacroIndexByName",
@@ -61,7 +70,8 @@ std = {
     "Constants",
     "MAX_ACCOUNT_MACROS",
 
-    -- Suite dependency
+    -- Suite dependencies (LibNUI optional — /bmi coverage uses its copy window when present)
     "LibNAddOn",
+    "LibNUI",
   }
 }

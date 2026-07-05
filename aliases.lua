@@ -1,5 +1,6 @@
 ---@class BetterMacroIcons
 ---@field AliasTermsFor fun(fileID: integer, name?: string): string
+---@field AliasCount fun(): integer
 ---@field onIconRightClick fun(owner: table, fileID: integer)
 local ns = select(2, ...)
 
@@ -31,6 +32,15 @@ function ns.AliasTermsFor(fileID, name)
     local aliases = ns.db and ns.db.aliases
     local terms = aliases and aliases[keyFor(fileID, name)]
     return terms and table.concat(terms, " ") or ""
+end
+
+-- Diagnostic (/bmi debug): how many icons have curated aliases (account-wide total).
+function ns.AliasCount()
+    local aliases = ns.db and ns.db.aliases
+    if not aliases then return 0 end
+    local n = 0
+    for _ in pairs(aliases) do n = n + 1 end
+    return n
 end
 
 local function addTerm(key, text)
