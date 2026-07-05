@@ -1,6 +1,7 @@
 ---@class BetterMacroIcons
 ---@field SpellTermsFor fun(fileID: integer): string
 ---@field SpellTermsCount fun(): integer
+---@field CanonRace fun(raceID: integer): integer
 local ns = select(2, ...)
 
 -- scan.lua — automatic spell-name search terms (REMOVABLE MODULE).
@@ -30,17 +31,21 @@ local RACE_ALIAS = { [24] = 25, [26] = 25, [70] = 52, [85] = 84, [91] = 86 }
 local function canonRace(raceID)
     return RACE_ALIAS[raceID] or raceID
 end
+ns.CanonRace = canonRace  -- exposed for dataset.lua (export/diff canonicalise race keys)
 
 local mergedSpellTerms = {}  -- [fileID] = " name1 name2 " — union of every spec/race section
 local scanPending
 
--- Lazily create the two persisted bucket tables. Owned entirely by this file, so removing
--- scan.lua removes every reference to them. Keys: spec ID / race ID → { [fileID] = " names " }.
+-- Lazily create the three persisted bucket tables. Owned entirely by this file, so removing
+-- scan.lua removes every reference to them. Keys: spec ID / race ID / class ID →
+-- { [fileID] = " names " }. bySpec = spec spells, byRace = racials (General line), byClass =
+-- class-base spells + professions/utility (the Class line + any other non-spec, non-General line).
 local function stores()
     local db = ns.db
     db.spellTermsBySpec = db.spellTermsBySpec or {}
     db.spellTermsByRace = db.spellTermsByRace or {}
-    return db.spellTermsBySpec, db.spellTermsByRace
+    db.spellTermsByClass = db.spellTermsByClass or {}
+    return db.spellTermsBySpec, db.spellTermsByRace, db.spellTermsByClass
 end
 
 -- Append a lowercased spell name to a bucket entry, skipping duplicates. Names are stored
@@ -56,10 +61,10 @@ local function addName(bucket, fileID, name)
     end
 end
 
--- Recompute the in-memory union of every spec + race section (deduped per icon).
+-- Recompute the in-memory union of every spec + race + class section (deduped per icon).
 local function rebuildMerged()
     wipe(mergedSpellTerms)
-    local bySpec, byRace = stores()
+    local bySpec, byRace, byClass = stores()
     local function absorb(section)
         for fileID, names in pairs(section) do
             for name in names:gmatch("%S+") do
@@ -67,32 +72,34 @@ local function rebuildMerged()
             end
         end
     end
-    for _, section in pairs(bySpec) do absorb(section) end
-    for _, section in pairs(byRace) do absorb(section) end
+    local function absorbAll(t) for _, section in pairs(t) do absorb(section) end end
+    absorbAll(bySpec); absorbAll(byRace); absorbAll(byClass)
     -- Fold in the baseline shipped with the addon (data/spellterms.lua), so a fresh install has
     -- coverage out of the box; live scans merge on top (deduped). Optional file — guarded.
     local bundled = ns.bundledSpellTerms
     if bundled then
-        for _, section in pairs(bundled.bySpec or {}) do absorb(section) end
-        for _, section in pairs(bundled.byRace or {}) do absorb(section) end
+        absorbAll(bundled.bySpec or {}); absorbAll(bundled.byRace or {}); absorbAll(bundled.byClass or {})
     end
 end
 
--- Scan the Player spellbook into the spec/race buckets. Each skill line's spells go to the
--- spec bucket for its specID, or the race bucket when the line has no spec (the General line:
--- racials + class-base). force wipes this character's own sections first (repair/refresh);
--- otherwise it's an additive merge that records only names not already present — so a
--- fully-captured spec/race does no meaningful work and alts contribute nothing. Returns the
--- pooled icon count.
+-- Scan the Player spellbook into the spec/race/class buckets, routed by skill-line index:
+-- spec lines (with a specID) → bySpec; the General line (Enum...General, racials + utility) →
+-- byRace; every other non-spec line (the Class line's class-base spells, + professions) →
+-- byClass. force wipes this character's own sections first (repair/refresh); otherwise it's an
+-- additive merge that records only names not already present — so a fully-captured spec/race/
+-- class does no meaningful work and alts contribute nothing. Returns the pooled icon count.
 local function scanSpells(force)
     if not ns.db then return 0 end
-    local bySpec, byRace = stores()
+    local bySpec, byRace, byClass = stores()
 
     local _, raceFile, raceID = UnitRace("player")
     local raceKey = raceID and canonRace(raceID) or raceFile
+    local classID = select(3, UnitClass("player"))
     byRace[raceKey] = (not force and byRace[raceKey]) or {}
+    if classID then byClass[classID] = (not force and byClass[classID]) or {} end
 
     local wipedSpec = force and {} or nil
+    local general = Enum.SpellBookSkillLineIndex.General
     local bank = Enum.SpellBookSpellBank.Player
     for lineIdx = 1, C_SpellBook.GetNumSpellBookSkillLines() do
         local line = C_SpellBook.GetSpellBookSkillLineInfo(lineIdx)
@@ -106,13 +113,17 @@ local function scanSpells(force)
                 end
                 bySpec[sid] = bySpec[sid] or {}
                 bucket = bySpec[sid]
-            else
-                bucket = byRace[raceKey]
+            elseif lineIdx == general then
+                bucket = byRace[raceKey]            -- racials + general utility
+            elseif classID then
+                bucket = byClass[classID]           -- class-base (Class line) + professions/misc
             end
-            for i = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
-                local info = C_SpellBook.GetSpellBookItemInfo(i, bank)
-                if info and info.iconID and info.name and info.name ~= "" then
-                    addName(bucket, info.iconID, info.name)
+            if bucket then
+                for i = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
+                    local info = C_SpellBook.GetSpellBookItemInfo(i, bank)
+                    if info and info.iconID and info.name and info.name ~= "" then
+                        addName(bucket, info.iconID, info.name)
+                    end
                 end
             end
         end
@@ -162,6 +173,18 @@ ns:registerCommand("scan", nil, function()
     if ns.refreshSearch then ns.refreshSearch() end
     ns:Print(("scanned spellbook — %d icons now carry spell names"):format(count))
 end, "Rescan your spellbook for spell-name search terms")
+
+-- Wipe the racial + class-base stores (keeps the spec store, which is always correctly bucketed)
+-- so they rebuild cleanly — e.g. after a bucketing fix. Re-log or /bmi scan each character to refill.
+ns:registerCommand("reset", nil, function()
+    if ns.db then
+        ns.db.spellTermsByRace = {}
+        ns.db.spellTermsByClass = {}
+    end
+    rebuildMerged()
+    if ns.refreshSearch then ns.refreshSearch() end
+    ns:Print("cleared racial + class-base terms (spec terms kept) — re-log or /bmi scan each character to rebuild")
+end, "Wipe racial/class-base terms so they rebuild cleanly (keeps spec terms)")
 
 -- Report which class/specs and races have been captured — the gaps to fill by logging into
 -- alts, en route to a complete bundled dataset. Specs are enumerated authoritatively from the
@@ -229,60 +252,3 @@ ns:registerCommand("coverage", nil, function()
 
     ns.ShowReport("BMI Coverage", lines)
 end, "Show which class/specs and races still need capturing")
-
--- Merge two bucket-tables ({[key]={[fileID]=" names "}}) into one, deduped per icon.
-local function mergeBuckets(liveT, bunT)
-    local out = {}
-    local function fold(src)
-        for key, section in pairs(src) do
-            local dst = out[key] or {}
-            out[key] = dst
-            for fileID, names in pairs(section) do
-                for name in names:gmatch("%S+") do addName(dst, fileID, name) end
-            end
-        end
-    end
-    fold(bunT or {})
-    fold(liveT)
-    return out
-end
-
--- Emit a bucket-table as sorted Lua-literal lines (deterministic → clean diffs).
-local function emitBuckets(lines, name, buckets)
-    lines[#lines + 1] = "  " .. name .. " = {"
-    local keys = {}
-    for k in pairs(buckets) do keys[#keys + 1] = k end
-    table.sort(keys)
-    for _, k in ipairs(keys) do
-        local fids = {}
-        for f in pairs(buckets[k]) do fids[#fids + 1] = f end
-        table.sort(fids)
-        local parts = {}
-        for _, f in ipairs(fids) do
-            parts[#parts + 1] = "[" .. f .. "]=" .. ("%q"):format(buckets[k][f])
-        end
-        lines[#lines + 1] = "    [" .. k .. "] = {" .. table.concat(parts, ",") .. "},"
-    end
-    lines[#lines + 1] = "  },"
-end
-
--- Serialize the pooled terms (shipped baseline + this account's live scans, merged) as a
--- ready-to-commit data/spellterms.lua, shown in the copy window. Paste it over that file to
--- ship the current coverage as everyone's baseline.
-ns:registerCommand("export", nil, function()
-    local bySpec, byRace = stores()
-    local bundled = ns.bundledSpellTerms or {}
-    local lines = {
-        "---@class BetterMacroIcons",
-        "---@field bundledSpellTerms table",
-        "local ns = select(2, ...)",
-        "",
-        "-- Bundled baseline spell/racial search terms (generated by /bmi export). scan.lua's",
-        "-- rebuildMerged folds this under live scans, so a fresh install has coverage out of the box.",
-        "ns.bundledSpellTerms = {",
-    }
-    emitBuckets(lines, "bySpec", mergeBuckets(bySpec, bundled.bySpec))
-    emitBuckets(lines, "byRace", mergeBuckets(byRace, bundled.byRace))
-    lines[#lines + 1] = "}"
-    ns.ShowReport("BMI Export — paste into data/spellterms.lua", lines)
-end, "Dump the pooled spell terms as data/spellterms.lua (copy window)")
