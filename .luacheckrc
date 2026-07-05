@@ -52,6 +52,15 @@ std = {
     "ACCEPT",
     "CANCEL",
 
+    -- cleanup.lua — /bmi cleanup: delete leaked VuhDo/Plumber duplicate macros
+    "InCombatLockdown",
+    "GetNumMacros",
+    "GetMacroInfo",
+    "GetMacroIndexByName",
+    "DeleteMacro",
+    "Constants",
+    "MAX_ACCOUNT_MACROS",
+
     -- Suite dependency
     "LibNAddOn",
   }

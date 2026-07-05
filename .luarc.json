@@ -34,6 +34,14 @@
     "ACCEPT",
     "CANCEL",
 
+    "InCombatLockdown",
+    "GetNumMacros",
+    "GetMacroInfo",
+    "GetMacroIndexByName",
+    "DeleteMacro",
+    "Constants",
+    "MAX_ACCOUNT_MACROS",
+
     "LibNAddOn"
   ]
 }
