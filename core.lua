@@ -192,8 +192,13 @@ local function injectSearchBox(frame)
         searchText = self:GetText():lower()
         -- Debounce: coalesce rapid keystrokes so we don't rescan the whole name index
         -- on every key. ns:delay keeps a single pending timer (one search box), so a
-        -- new keystroke replaces the pending filter.
-        ns:delay(SEARCH_DEBOUNCE, function() applyFilter(frame) end)
+        -- new keystroke replaces the pending filter. The timer fires off the addon's
+        -- always-present frame, so guard against the popup being closed inside the debounce
+        -- window (the released iconDataProvider lingers on the hidden frame).
+        ns:delay(SEARCH_DEBOUNCE, function()
+            if not frame:IsShown() or not frame.iconDataProvider then return end
+            applyFilter(frame)
+        end)
     end)
     frame._bmiSearchBox = box
 end
