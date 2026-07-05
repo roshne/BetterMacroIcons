@@ -51,12 +51,14 @@ std = {
     "C_SpellBook",
     "Enum",
     "UnitRace",
+    "UnitClass",
 
-    -- scan.lua — /bmi coverage: enumerate class/specs + resolve race names
+    -- scan.lua/dataset.lua — /bmi coverage + /bmi diff: enumerate class/specs, resolve names
     "GetNumClasses",
     "GetClassInfo",
     "C_SpecializationInfo",
     "GetSpecializationInfoForClassID",
+    "GetSpecializationInfoByID",
     "C_CreatureInfo",
 
     -- aliases.lua — right-click context menu + add-term popup

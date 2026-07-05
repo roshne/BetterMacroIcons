@@ -27,10 +27,12 @@
     "C_SpellBook",
     "Enum",
     "UnitRace",
+    "UnitClass",
     "GetNumClasses",
     "GetClassInfo",
     "C_SpecializationInfo",
     "GetSpecializationInfoForClassID",
+    "GetSpecializationInfoByID",
     "C_CreatureInfo",
 
     "MenuUtil",
