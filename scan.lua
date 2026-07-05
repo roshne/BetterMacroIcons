@@ -1,5 +1,6 @@
 ---@class BetterMacroIcons
 ---@field SpellTermsFor fun(fileID: integer): string
+---@field SpellTermsCount fun(): integer
 local ns = select(2, ...)
 
 -- scan.lua — automatic spell-name search terms (REMOVABLE MODULE).
@@ -119,6 +120,14 @@ function ns.SpellTermsFor(fileID)
     return mergedSpellTerms[fileID] or ""
 end
 
+-- Diagnostic (/bmi debug): how many icons carry pooled spell terms — a stable account-wide
+-- total, independent of the current filter tab.
+function ns.SpellTermsCount()
+    local n = 0
+    for _ in pairs(mergedSpellTerms) do n = n + 1 end
+    return n
+end
+
 -- Coalesce SPELLS_CHANGED bursts into a single additive scan. Uses ns:after (not ns:delay)
 -- so it can't clobber core's single-slot keystroke-debounce timer.
 local function queueScan()
@@ -191,18 +200,20 @@ ns:registerCommand("coverage", nil, function()
         end
     end
 
-    ns:Print(("coverage — specs %d/%d, races %d/%d"):format(specHave, specTotal, raceHave, raceTotal))
+    local lines = { ("coverage — specs %d/%d, races %d/%d"):format(specHave, specTotal, raceHave, raceTotal) }
     if #missingSpecs > 0 then
-        ns:Print("missing specs:")
-        for _, line in ipairs(missingSpecs) do ns:Print("  " .. line) end
+        lines[#lines + 1] = "missing specs:"
+        for _, line in ipairs(missingSpecs) do lines[#lines + 1] = "  " .. line end
     end
     if #missingRaces > 0 then
-        ns:Print("missing races: " .. table.concat(missingRaces, ", "))
+        lines[#lines + 1] = "missing races: " .. table.concat(missingRaces, ", ")
     end
     if #untracked > 0 then
-        ns:Print("captured but not in race list: " .. table.concat(untracked, ", "))
+        lines[#lines + 1] = "captured but not in race list: " .. table.concat(untracked, ", ")
     end
     if #missingSpecs == 0 and #missingRaces == 0 then
-        ns:Print("all class/specs and races captured — ready to bundle!")
+        lines[#lines + 1] = "all class/specs and races captured — ready to bundle!"
     end
+
+    ns.ShowReport("BMI Coverage", lines)
 end, "Show which class/specs and races still need capturing")

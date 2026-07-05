@@ -23,8 +23,9 @@ Spell names are gathered automatically the first time you log in each character 
 
 | Command | Description |
 |---|---|
+| `/bmi open` | Open the macro icon picker directly to search icons (Cancel to just browse) |
 | `/bmi scan` | Re-read the current character's spellbook for spell-name search terms |
-| `/bmi coverage` | Show which class/specs and races have been captured, and which are still missing |
+| `/bmi coverage` | Show which class/specs and races have been captured, and which are still missing (in a copyable window if LibNUI is installed) |
 | `/bmi debug` | Print search diagnostics (open the icon picker first) |
 | `/bmi cleanup` | Delete duplicate macros that VuhDo and Plumber leak (`/bmi cleanup preview` counts them without deleting) |
 
@@ -40,7 +41,8 @@ bar, re-drag the House button from the Housing dashboard to recreate it.
 
 ## Dependencies
 
-- **LibNAddOn** — must be installed and enabled.
+- **LibNAddOn** — required; must be installed and enabled.
+- **LibNUI** — optional; if present, `/bmi coverage` shows its report in a copyable window (otherwise it prints to chat).
 
 ## Saved data
 

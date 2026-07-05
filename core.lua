@@ -42,6 +42,7 @@ end
 ---@class BetterMacroIcons
 ---@field IconName fun(tex: string|integer): string
 ---@field refreshSearch fun()
+---@field ShowReport fun(title: string, lines: string[])
 ns.IconName = iconName
 
 -- Tooltip on each grid icon showing its texture path. The IconSelector drives every
@@ -206,6 +207,16 @@ function ns.refreshSearch()
     end
 end
 
+-- Show a multi-line report in LibNUI's shared copy window (the selectable/copyable `/wdebug`
+-- widget) when LibNUI is installed, else print it to chat. Used by /bmi debug and /bmi coverage.
+function ns.ShowReport(title, lines)
+    if LibNUI and LibNUI.ShowCopyWindow then
+        LibNUI.ShowCopyWindow(title, table.concat(lines, "\n"))
+    else
+        for _, line in ipairs(lines) do ns:Print(line) end
+    end
+end
+
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
     if addonName ~= "Blizzard_MacroUI" then return end
 
@@ -232,25 +243,41 @@ ns:registerEvent("ADDON_LOADED", function(self, addonName)
     end)
 end)
 
+-- Open the macro icon picker directly, so you can search icons without walking through the
+-- macro editor. Uses "New" mode (it doesn't dereference a selected macro, unlike "Edit"); the
+-- picker only creates a macro if you click Okay, so Cancel just backs out after browsing.
+ns:registerCommand("open", nil, function()
+    if InCombatLockdown() then
+        ns:Print("can't open the macro UI in combat")
+        return
+    end
+    if not C_AddOns.IsAddOnLoaded("Blizzard_MacroUI") then
+        C_AddOns.LoadAddOn("Blizzard_MacroUI")
+    end
+    ShowUIPanel(MacroFrame)
+    MacroPopupFrame.mode = IconSelectorPopupFrameModes.New
+    MacroPopupFrame:Show()
+end, "Open the macro icon picker to search icons")
+
 ns:registerCommand("debug", nil, function()
     local mapCount = 0
     for _ in pairs(fileIDMap) do mapCount = mapCount + 1 end
-    ns:Print("fileIDMap: " .. mapCount .. " entries")
-    ns:Print("nameIndex: " .. #nameIndex .. " entries")
 
+    -- Account-wide totals from the pooled term data — stable regardless of which filter tab
+    -- is open (guarded so they still read 0 if a term module is removed).
+    local spellTagged = ns.SpellTermsCount and ns.SpellTermsCount() or 0
+    local aliasTagged = ns.AliasCount and ns.AliasCount() or 0
+
+    local lines = {
+        "fileIDMap: " .. mapCount .. " entries",
+        "nameIndex: " .. #nameIndex .. " entries",
+        ("spell-tagged icons %d, alias-tagged icons %d (account-wide totals)"):format(spellTagged, aliasTagged),
+    }
+    -- The current filter tab only exposes a subset of icons; report its size for context.
     if MacroPopupFrame and MacroPopupFrame.iconDataProvider then
-        local p = MacroPopupFrame.iconDataProvider
-        local total = p:GetNumIcons()
-        -- Count, within the current filter tab, how many icons carry each kind of extra term
-        -- (guarded so it still works if either term module is removed).
-        local withSpell, withAlias = 0, 0
-        for i = 1, total do
-            local tex = p:GetIconByIndex(i)
-            if ns.SpellTermsFor and ns.SpellTermsFor(tex) ~= "" then withSpell = withSpell + 1 end
-            if ns.AliasTermsFor and ns.AliasTermsFor(tex, iconName(tex)) ~= "" then withAlias = withAlias + 1 end
-        end
-        ns:Print(("provider %d icons — spell-tagged %d, alias-tagged %d"):format(total, withSpell, withAlias))
+        lines[#lines + 1] = "current tab provider: " .. MacroPopupFrame.iconDataProvider:GetNumIcons() .. " icons"
     else
-        ns:Print("open the icon popup first")
+        lines[#lines + 1] = "current tab provider: (open the icon popup)"
     end
+    ns.ShowReport("BMI Debug", lines)
 end, "Print search diagnostics")

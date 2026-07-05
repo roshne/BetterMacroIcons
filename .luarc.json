@@ -18,6 +18,11 @@
     "SearchBoxTemplate_OnTextChanged",
     "GameTooltip",
     "MacroPopupFrame",
+    "MacroFrame",
+    "IconSelectorPopupFrameModes",
+    "InCombatLockdown",
+    "C_AddOns",
+    "ShowUIPanel",
 
     "C_SpellBook",
     "Enum",
@@ -34,7 +39,6 @@
     "ACCEPT",
     "CANCEL",
 
-    "InCombatLockdown",
     "GetNumMacros",
     "GetMacroInfo",
     "GetMacroIndexByName",
@@ -42,6 +46,7 @@
     "Constants",
     "MAX_ACCOUNT_MACROS",
 
-    "LibNAddOn"
+    "LibNAddOn",
+    "LibNUI"
   ]
 }

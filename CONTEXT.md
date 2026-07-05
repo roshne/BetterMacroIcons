@@ -1,6 +1,6 @@
 # BetterMacroIcons
 
-**Deps:** LibNAddOn · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi scan`, `/bmi coverage`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
+**Deps:** LibNAddOn (+ optional LibNUI) · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi open`, `/bmi scan`, `/bmi coverage`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI)
 
 Injects a live-search box into `MacroPopupFrame` (the icon picker shown when you click the icon button in the macro editor). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
 
@@ -98,14 +98,17 @@ scanSpells(force)         -- scan Player bank into bySpec[specID]/byRace[canonRa
                           -- wipes this char's sections first, else additive merge; rebuilds; returns count
 rebuildMerged()           -- union all spec+race sections into mergedSpellTerms (deduped)
 ns.SpellTermsFor(fileID)  -- pooled spell names for an icon (or "")
+ns.SpellTermsCount()      -- diagnostic: total icons carrying pooled spell terms (tab-independent)
 queueScan()               -- SPELLS_CHANGED debounce via ns:after(300) (not ns:delay)
 canonRace(raceID)         -- faction/neutral variant → canonical race id (RACE_ALIAS)
-/bmi coverage             -- specs enumerated via API, races vs PLAYABLE_RACES; prints missing + untracked
+/bmi coverage             -- specs via API, races vs PLAYABLE_RACES; missing + untracked, shown in the
+                          -- LibNUI copy window (ShowCopyWindow) when present, else chat
 
 -- aliases.lua
 ns:MigrateDB()            -- seed db.version=1, db.aliases={} (non-destructive)
 ns.AliasTermsFor(fileID, name)  -- curated terms for an icon, space-joined (or "")
 addTerm(key, text) / removeTerm(key, text)  -- mutate db.aliases[key], then refreshSearch
+ns.AliasCount()           -- diagnostic: total icons with curated aliases
 ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-term submenu
 ```
 
@@ -137,8 +140,10 @@ ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-
 | `GameTooltip` | Hover tooltip on each grid icon |
 | `MacroPopupFrame` | Blizzard_MacroUI icon picker frame |
 | `CreateFrame`, `hooksecurefunc`, `wipe`, `table` | Standard WoW/Lua API |
+| `MacroFrame`, `IconSelectorPopupFrameModes`, `InCombatLockdown`, `C_AddOns`, `ShowUIPanel` | `core.lua` — `/bmi open`: load + show the macro UI and the picker on demand (`MacroPopupFrame` is a *written* global here — `.mode` is set) |
 | `C_SpellBook`, `Enum`, `UnitRace` | `scan.lua` — spellbook scan + spec/race keys |
 | `GetNumClasses`, `GetClassInfo`, `C_SpecializationInfo`, `GetSpecializationInfoForClassID`, `C_CreatureInfo` | `scan.lua` — `/bmi coverage`: enumerate class/specs + resolve race names |
+| `LibNUI` | `scan.lua` — optional; `/bmi coverage` uses `LibNUI.ShowCopyWindow` (the `/wdebug` widget) when present, else chat. `## OptionalDeps: LibNUI` in the toc orders the load |
 | `MenuUtil`, `StaticPopup_Show`, `StaticPopupDialogs`, `ACCEPT`, `CANCEL` | `aliases.lua` — right-click menu + add-term popup (`StaticPopupDialogs` is a **writable** global) |
 | `InCombatLockdown`, `GetNumMacros`, `GetMacroInfo`, `GetMacroIndexByName`, `DeleteMacro`, `Constants`, `MAX_ACCOUNT_MACROS` | `cleanup.lua` — `/bmi cleanup`: enumerate + delete leaked macros (`Constants.MacroConsts.MAX_ACCOUNT_MACROS` with `MAX_ACCOUNT_MACROS`/`120` fallback for the character-block base) |
 
