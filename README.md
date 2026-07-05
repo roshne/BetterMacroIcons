@@ -26,6 +26,7 @@ Spell names are gathered automatically the first time you log in each character 
 | `/bmi open` | Open the macro icon picker directly to search icons (Cancel to just browse) |
 | `/bmi scan` | Re-read the current character's spellbook for spell-name search terms |
 | `/bmi coverage` | Show which class/specs and races have been captured, and which are still missing (in a copyable window if LibNUI is installed) |
+| `/bmi export` | Dump the pooled spell terms as a `data/spellterms.lua` baseline (copy window) — for contributors extending the shipped dataset |
 | `/bmi debug` | Print search diagnostics (open the icon picker first) |
 | `/bmi cleanup` | Delete duplicate macros that VuhDo and Plumber leak (`/bmi cleanup preview` counts them without deleting) |
 

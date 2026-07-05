@@ -14,6 +14,7 @@
 
 icons.lua
 core.lua
+data/spellterms.lua
 scan.lua
 aliases.lua
 cleanup.lua
