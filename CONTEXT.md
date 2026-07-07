@@ -1,8 +1,8 @@
 # BetterMacroIcons
 
-**Deps:** LibNAddOn (+ optional LibNUI) · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi open`, `/bmi scan`, `/bmi reset`, `/bmi coverage`, `/bmi export`, `/bmi diff`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI + Blizzard_Transmog)
+**Deps:** LibNAddOn (+ optional LibNUI) · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi open`, `/bmi scan`, `/bmi reset`, `/bmi coverage`, `/bmi export`, `/bmi diff`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI, Blizzard_Transmog, Blizzard_UIPanels_Game, Blizzard_GuildBankUI)
 
-Injects a live-search box into the Blizzard icon pickers built on `IconSelectorPopupFrameTemplate`: `MacroPopupFrame` (the macro editor's icon button) and `TransmogFrame.OutfitPopup` (the transmog outfit save/edit dialog). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
+Injects a live-search box into the Blizzard icon pickers built on `IconSelectorPopupFrameTemplate`: `MacroPopupFrame` (the macro editor's icon button), `TransmogFrame.OutfitPopup` (the transmog outfit save/edit dialog), `GearManagerPopupFrame` (equipment set save/edit), and `GuildBankPopupFrame` (guild bank tab name/icon). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
 
 ---
 
@@ -24,7 +24,7 @@ Injects a live-search box into the Blizzard icon pickers built on `IconSelectorP
 
 ## Architecture
 
-`PICKER_ADDONS` maps each load-on-demand Blizzard addon to its picker frame: `Blizzard_MacroUI` → `MacroPopupFrame`, `Blizzard_Transmog` → `TransmogFrame.OutfitPopup`. Both inherit `IconSelectorPopupFrameTemplate`, so `hookPicker(frame)` installs the identical three hooks on each (on `ADDON_LOADED`, plus a load-time `C_AddOns.IsAddOnLoaded` sweep for pickers that loaded before us — after a `/reload` with their UI open, LOD Blizzard addons come back up before third-party addons):
+`PICKER_ADDONS` maps each Blizzard addon to its picker frame: `Blizzard_MacroUI` → `MacroPopupFrame`, `Blizzard_Transmog` → `TransmogFrame.OutfitPopup`, `Blizzard_UIPanels_Game` → `GearManagerPopupFrame` (equipment sets; startup addon, so always hooked by the load-time sweep), `Blizzard_GuildBankUI` → `GuildBankPopupFrame`. All inherit `IconSelectorPopupFrameTemplate`, so `hookPicker(frame)` installs the identical three hooks on each (on `ADDON_LOADED`, plus a load-time `C_AddOns.IsAddOnLoaded` sweep for pickers that loaded before us — Blizzard startup addons always do, and after a `/reload` with their UI open, LOD Blizzard addons come back up before third-party addons too):
 
 | Hook | When | Action |
 |---|---|---|
@@ -34,7 +34,7 @@ Injects a live-search box into the Blizzard icon pickers built on `IconSelectorP
 
 `HookScript("OnShow")` is used (not `hooksecurefunc(frame, "OnShow")`) because the `<OnShow method="OnShow"/>` XML binding captures the method reference at frame creation time, so the Lua-method hook never fires.
 
-Search state (`nameIndex`/`filteredMap`/`searchText`/`prevSearch`) lives in the `pickers` table keyed by frame, so multiple pickers coexist (the macro UI can be open at a transmogrifier). The transmog popup **recreates its `iconDataProvider` on every OnShow** and its `Update()` resets the selections provider to the unfiltered view — both are already covered by the OnShow/Update hooks. Saving with a filtered grid is safe: `OkayButton_OnClick` reads the selected icon's texture, never a grid index.
+Search state (`nameIndex`/`filteredMap`/`searchText`/`prevSearch`) lives in the `pickers` table keyed by frame, so multiple pickers coexist (the macro UI can be open at a transmogrifier). The transmog/gear-manager/guild-bank popups **recreate their `iconDataProvider` on every OnShow** (the gear manager also nils it on hide) and their `Update()` resets the selections provider to the unfiltered view — both are already covered by the OnShow/Update hooks and the shown/provider guards. Saving with a filtered grid is safe in every picker: each `OkayButton_OnClick` reads the selected icon's texture from `SelectedIconButton`, never a grid index.
 
 `hookPicker` also wraps each picker's `IconSelector` **setup callback** (`SelectorMixin:Get/SetSetupCallback`) once: the selector drives every (recycled) grid button through that one callback with `(button, selectionIndex, icon)`, so the wrapper calls Blizzard's original, stashes the current fileID on the button, and attaches an idempotent hover tooltip **and** a right-click handler.
 
@@ -136,7 +136,7 @@ ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-
 
 ## Icon Provider
 
-Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provider (the macro popup creates one with `IconDataProviderExtraType.Spellbook`, the transmog popup with `.Transmog` — the latter prepends the currently viewed outfit's item icons and is **recreated every OnShow**):
+Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provider (extra-icon type by picker: macro `.Spellbook`, transmog `.Transmog` — prepends the viewed outfit's item icons, gear manager `.Equipment` — prepends equipped-item icons, guild bank `.None`; all but the macro popup recreate the provider every OnShow):
 
 | Method | Returns |
 |---|---|
@@ -161,7 +161,7 @@ Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provi
 | `MacroPopupFrame` | Blizzard_MacroUI icon picker frame |
 | `CreateFrame`, `hooksecurefunc`, `wipe`, `table` | Standard WoW/Lua API |
 | `MacroFrame`, `IconSelectorPopupFrameModes`, `InCombatLockdown`, `C_AddOns`, `ShowUIPanel` | `core.lua` — `/bmi open`: load + show the macro UI and the picker on demand (`MacroPopupFrame` is a *written* global here — `.mode` is set) |
-| `TransmogFrame` | `core.lua` — `TransmogFrame.OutfitPopup` is the transmog outfit icon picker (Blizzard_Transmog) |
+| `TransmogFrame`, `GearManagerPopupFrame`, `GuildBankPopupFrame` | `core.lua` — the other hooked pickers: transmog outfit (Blizzard_Transmog), equipment set (Blizzard_UIPanels_Game), guild bank tab (Blizzard_GuildBankUI) |
 | `C_SpellBook`, `Enum`, `UnitRace`, `UnitClass` | `scan.lua` — spellbook scan; `Enum.SpellBookSkillLineIndex.General` routes racials vs class-base; `UnitClass` → classID for `byClass` |
 | `GetNumClasses`, `GetClassInfo`, `C_SpecializationInfo`, `GetSpecializationInfoForClassID`, `GetSpecializationInfoByID`, `C_CreatureInfo` | `scan.lua`/`dataset.lua` — `/bmi coverage` + `/bmi diff`: enumerate class/specs, resolve spec/race names (`GetSpecializationInfoByID` names a spec from its id in the diff) |
 | `LibNUI` | `scan.lua` — optional; `/bmi coverage` uses `LibNUI.ShowCopyWindow` (the `/wdebug` widget) when present, else chat. `## OptionalDeps: LibNUI` in the toc orders the load |
@@ -201,5 +201,6 @@ Wrap each line as `"<name>",` inside `ns.iconNames = { … }`. Names that don't 
 - **`fileIDMap` / spell scan are session/spec-stable** — `buildFileIDMap` is a no-op after first call; spec/race sections are captured once and pooled.
 - **Tooltips are grid-only** — the "Currently Selected" preview button (`SelectedIconButton`) is intentionally not covered.
 - **The keystroke debounce (`ns:delay`) is one shared timer across all pickers** — safe because only one search box can have keyboard focus at a time, and the debounced callback guards `frame:IsShown() and frame.iconDataProvider` so a stale fire against a closed popup is a no-op. Don't add another `ns:delay` caller to this addon (use `ns:after`, as `scan.lua` does).
-- **Transmog extra icons can vanish during search** — the transmog provider prepends the viewed outfit's item icons; any not in the bundled listfile resolve to `""` in `iconName` and match no query (same as unknown fileIDs in the macro picker). Cosmetic only.
-- **`SetIconFilterInternal` early-returns when the filter is unchanged** (the transmog popup re-sets "All" each show), but `hooksecurefunc` fires regardless — the harmless double rebuild on show is expected.
+- **Extra icons can vanish during search** — the transmog/gear-manager providers prepend the viewed outfit's / equipped items' icons; any not in the bundled listfile resolve to `""` in `iconName` and match no query (same as unknown fileIDs in the macro picker). Cosmetic only.
+- **`SetIconFilterInternal` early-returns when the filter is unchanged** (the transmog/gear-manager popups re-set "All" each show), but `hooksecurefunc` fires regardless — the harmless double rebuild on show is expected.
+- **`GuildBankPopupFrame` repositions itself in OnShow** (`ClearAllPoints` + screen-edge check) — position only; it never resizes, so the one-time `injectSearchBox` height growth is untouched.

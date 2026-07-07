@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-Standalone WoW Retail addon by Roshne (Interface 120000+). Injects a live-search box, spell-name/custom search terms, and informative tooltips into the Blizzard icon pickers (`MacroPopupFrame` and the transmog outfit popup `TransmogFrame.OutfitPopup`). Depends on **LibNAddOn** (and optionally **LibNUI** — `/bmi coverage` uses its copy window when present). Stores account-wide saved variables (`BetterMacroIconsDB`: curated aliases + pooled spellbook terms). The spellbook scan is a **removable module** (`scan.lua`) behind a single seam. No build step, no package manager. All in-game testing is done via `/reload`.
+Standalone WoW Retail addon by Roshne (Interface 120000+). Injects a live-search box, spell-name/custom search terms, and informative tooltips into the Blizzard icon pickers (`MacroPopupFrame`, the transmog outfit popup `TransmogFrame.OutfitPopup`, the equipment set manager `GearManagerPopupFrame`, and `GuildBankPopupFrame`). Depends on **LibNAddOn** (and optionally **LibNUI** — `/bmi coverage` uses its copy window when present). Stores account-wide saved variables (`BetterMacroIconsDB`: curated aliases + pooled spellbook terms). The spellbook scan is a **removable module** (`scan.lua`) behind a single seam. No build step, no package manager. All in-game testing is done via `/reload`.
 
 ## Coding Conventions
 
