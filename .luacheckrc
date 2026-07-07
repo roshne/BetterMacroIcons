@@ -42,6 +42,10 @@ std = {
     "MacroFrame",
     "IconSelectorPopupFrameModes",
 
+    -- Blizzard_Transmog global — the outfit-save popup (TransmogFrame.OutfitPopup) is the
+    -- second icon picker we hook
+    "TransmogFrame",
+
     -- `/bmi open` — load + show the macro UI on demand
     "InCombatLockdown",
     "C_AddOns",

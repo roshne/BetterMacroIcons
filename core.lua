@@ -1,15 +1,25 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
-local injected      = false
-local fileIDMap     = {}  -- fileID integer → lowercase icon name (built once per session)
-local nameIndex     = {}  -- [providerIndex] = searchable name string
-local filteredMap   = {}  -- [displayIndex]  = providerIndex
-local searchText    = ""
-local prevSearch          -- search string filteredMap currently reflects; nil forces a full scan
+local fileIDMap = {}  -- fileID integer → lowercase icon name (built once per session)
 local SEARCH_DEBOUNCE = 100  -- ms to coalesce keystrokes before filtering
 
 local SEARCH_H = 26
+
+-- Per-picker search state, keyed by popup frame. Every Blizzard icon picker that
+-- inherits IconSelectorPopupFrameTemplate gets the same treatment; each entry holds:
+--   nameIndex   = { [providerIndex] = searchable name blob }
+--   filteredMap = { [displayIndex]  = providerIndex; recomputed each keystroke }
+--   searchText  = current lowercased query ("" = no filter)
+--   prevSearch  = query filteredMap currently reflects; nil forces a full scan
+local pickers = {}
+
+-- The supported pickers: the load-on-demand Blizzard addon that creates each popup
+-- frame, and how to reach the frame once it exists.
+local PICKER_ADDONS = {
+    ["Blizzard_MacroUI"]  = function() return MacroPopupFrame end,
+    ["Blizzard_Transmog"] = function() return TransmogFrame.OutfitPopup end,
+}
 
 -- Resolve the bundled Interface\Icons name list (ns.iconNames) to fileIDs so the
 -- provider's integer-fileID entries become text-searchable. GetMacroIcons returns bare
@@ -123,8 +133,9 @@ local function matchesAll(name, tokens)
 end
 
 local function rebuildNameIndex(frame)
+    local state = pickers[frame]
     local p = frame.iconDataProvider
-    wipe(nameIndex)
+    wipe(state.nameIndex)
     for i = 1, p:GetNumIcons() do
         local tex = p:GetIconByIndex(i)
         local name = iconName(tex)
@@ -132,27 +143,29 @@ local function rebuildNameIndex(frame)
         -- Guarded so either module can be absent; search is plain substring over the blob.
         local extra = ((ns.SpellTermsFor and ns.SpellTermsFor(tex)) or "")
             .. " " .. ((ns.AliasTermsFor and ns.AliasTermsFor(tex, name)) or "")
-        nameIndex[i] = name .. " " .. extra
+        state.nameIndex[i] = name .. " " .. extra
     end
-    prevSearch = nil  -- provider/index changed: the next filter must do a full scan
+    state.prevSearch = nil  -- provider/index changed: the next filter must do a full scan
 end
 
 local function applyFilter(frame)
+    local state = pickers[frame]
     local p = frame.iconDataProvider
+    local searchText, filteredMap = state.searchText, state.filteredMap
 
     if searchText == "" then
         wipe(filteredMap)
         for i = 1, p:GetNumIcons() do
             filteredMap[i] = i
         end
-    elseif prevSearch and prevSearch ~= "" and searchText:find(prevSearch, 1, true) == 1 then
+    elseif state.prevSearch and state.prevSearch ~= "" and searchText:find(state.prevSearch, 1, true) == 1 then
         -- The new query is a string-prefix extension of the previous one, so each token's
         -- requirement only tightened — its matches are a subset of the current filteredMap.
         -- Narrow it in place instead of rescanning the whole index.
         local tokens = tokenize(searchText)
         local n = 0
         for _, providerIdx in ipairs(filteredMap) do
-            if matchesAll(nameIndex[providerIdx], tokens) then
+            if matchesAll(state.nameIndex[providerIdx], tokens) then
                 n = n + 1
                 filteredMap[n] = providerIdx
             end
@@ -161,13 +174,13 @@ local function applyFilter(frame)
     else
         local tokens = tokenize(searchText)
         wipe(filteredMap)
-        for i, name in ipairs(nameIndex) do
+        for i, name in ipairs(state.nameIndex) do
             if matchesAll(name, tokens) then
                 filteredMap[#filteredMap + 1] = i
             end
         end
     end
-    prevSearch = searchText
+    state.prevSearch = searchText
 
     frame.IconSelector:SetSelectionsDataProvider(
         function(idx) return p:GetIconByIndex(filteredMap[idx]) end,
@@ -177,24 +190,28 @@ local function applyFilter(frame)
 end
 
 local function injectSearchBox(frame)
-    if injected then return end
-    injected = true
+    if frame._bmiSearchBox then return end
 
     frame:SetHeight(frame:GetHeight() + SEARCH_H)
     frame.IconSelector:ClearAllPoints()
     frame.IconSelector:SetPoint("TOPLEFT", frame, "TOPLEFT", 21, -(97 + SEARCH_H))
 
-    local box = CreateFrame("EditBox", "BetterMacroIconsSearchBox", frame, "SearchBoxTemplate")
+    -- Anonymous on purpose: a global name would collide across picker instances, and
+    -- SearchBoxTemplate's children are all parentKey-addressed so no name is needed.
+    local box = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
     box:SetSize(494, 20)
     box:SetPoint("TOPLEFT", frame, "TOPLEFT", 21, -99)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
-        searchText = self:GetText():lower()
+        pickers[frame].searchText = self:GetText():lower()
         -- Debounce: coalesce rapid keystrokes so we don't rescan the whole name index
-        -- on every key. ns:delay keeps a single pending timer (one search box), so a
-        -- new keystroke replaces the pending filter. The timer fires off the addon's
-        -- always-present frame, so guard against the popup being closed inside the debounce
-        -- window (the released iconDataProvider lingers on the hidden frame).
+        -- on every key. ns:delay keeps a single pending timer for the whole addon,
+        -- shared by every picker's search box — safe because only one box can have
+        -- keyboard focus, so concurrent keystreams can't happen; a later keystroke
+        -- (in any box) replacing a pending filter is exactly the debounce we want.
+        -- The timer fires off the addon's always-present frame, so guard against the
+        -- popup being closed inside the debounce window (the released iconDataProvider
+        -- lingers on the hidden frame).
         ns:delay(SEARCH_DEBOUNCE, function()
             if not frame:IsShown() or not frame.iconDataProvider then return end
             applyFilter(frame)
@@ -203,12 +220,49 @@ local function injectSearchBox(frame)
     frame._bmiSearchBox = box
 end
 
--- Re-index and re-filter the live picker after the term data changes (a scan finished, an
--- alias was added/removed). No-op when the picker isn't open. Exposed to scan.lua/aliases.lua.
+-- Install the search box + filter hooks on one icon-picker popup. All supported pickers
+-- inherit IconSelectorPopupFrameTemplate, so the hook surface is identical:
+--   OnShow                — inject the box, (re)build the index, apply the filter
+--   SetIconFilterInternal — filter dropdown changed: new provider view, re-index
+--   Update                — Blizzard reset the selections provider; re-apply ours
+-- HookScript("OnShow") is used (not hooksecurefunc) because the <OnShow method="OnShow"/>
+-- XML binding captures the method reference at frame creation, so a Lua-method hook
+-- would never fire.
+local function hookPicker(frame)
+    if pickers[frame] then return end
+    pickers[frame] = { nameIndex = {}, filteredMap = {}, searchText = "", prevSearch = nil }
+
+    installButtonHandlers(frame.IconSelector)
+
+    frame:HookScript("OnShow", function(f)
+        injectSearchBox(f)
+        f._bmiSearchBox:SetText("")
+        pickers[f].searchText = ""
+        buildFileIDMap()
+        rebuildNameIndex(f)
+        applyFilter(f)
+    end)
+
+    hooksecurefunc(frame, "SetIconFilterInternal", function(f)
+        rebuildNameIndex(f)
+        applyFilter(f)
+    end)
+
+    -- Re-apply after Blizzard's Update() so it doesn't clobber our filtered provider.
+    hooksecurefunc(frame, "Update", function(f)
+        if pickers[f].searchText == "" then return end
+        applyFilter(f)
+    end)
+end
+
+-- Re-index and re-filter any live picker after the term data changes (a scan finished, an
+-- alias was added/removed). No-op when no picker is open. Exposed to scan.lua/aliases.lua.
 function ns.refreshSearch()
-    if MacroPopupFrame and MacroPopupFrame:IsShown() then
-        rebuildNameIndex(MacroPopupFrame)
-        applyFilter(MacroPopupFrame)
+    for frame in pairs(pickers) do
+        if frame:IsShown() and frame.iconDataProvider then
+            rebuildNameIndex(frame)
+            applyFilter(frame)
+        end
     end
 end
 
@@ -223,34 +277,25 @@ function ns.ShowReport(title, lines)
 end
 
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
-    if addonName ~= "Blizzard_MacroUI" then return end
-
-    installButtonHandlers(MacroPopupFrame.IconSelector)
-
-    MacroPopupFrame:HookScript("OnShow", function(frame)
-        injectSearchBox(frame)
-        frame._bmiSearchBox:SetText("")
-        searchText = ""
-        buildFileIDMap()
-        rebuildNameIndex(frame)
-        applyFilter(frame)
-    end)
-
-    hooksecurefunc(MacroPopupFrame, "SetIconFilterInternal", function(frame)
-        rebuildNameIndex(frame)
-        applyFilter(frame)
-    end)
-
-    -- Re-apply after Blizzard's Update() so it doesn't clobber our filtered provider.
-    hooksecurefunc(MacroPopupFrame, "Update", function(frame)
-        if searchText == "" then return end
-        applyFilter(frame)
-    end)
+    local getFrame = PICKER_ADDONS[addonName]
+    if getFrame then
+        hookPicker(getFrame())
+    end
 end)
+
+-- A picker's Blizzard addon can already be loaded when we load (e.g. after a /reload with
+-- its UI open, load-on-demand addons come back up before third-party addons, so their
+-- ADDON_LOADED fired before our listener existed). Hook anything already present.
+for addonName, getFrame in pairs(PICKER_ADDONS) do
+    if C_AddOns.IsAddOnLoaded(addonName) then
+        hookPicker(getFrame())
+    end
+end
 
 -- Open the macro icon picker directly, so you can search icons without walking through the
 -- macro editor. Uses "New" mode (it doesn't dereference a selected macro, unlike "Edit"); the
 -- picker only creates a macro if you click Okay, so Cancel just backs out after browsing.
+-- (The transmog picker has no equivalent: its popup needs the transmogrifier UI open.)
 ns:registerCommand("open", nil, function()
     if InCombatLockdown() then
         ns:Print("can't open the macro UI in combat")
@@ -275,14 +320,19 @@ ns:registerCommand("debug", nil, function()
 
     local lines = {
         "fileIDMap: " .. mapCount .. " entries",
-        "nameIndex: " .. #nameIndex .. " entries",
         ("spell-tagged icons %d, alias-tagged icons %d (account-wide totals)"):format(spellTagged, aliasTagged),
     }
-    -- The current filter tab only exposes a subset of icons; report its size for context.
-    if MacroPopupFrame and MacroPopupFrame.iconDataProvider then
-        lines[#lines + 1] = "current tab provider: " .. MacroPopupFrame.iconDataProvider:GetNumIcons() .. " icons"
-    else
-        lines[#lines + 1] = "current tab provider: (open the icon popup)"
+    -- The current filter tab only exposes a subset of icons; report each hooked picker.
+    local anyOpen = false
+    for frame in pairs(pickers) do
+        if frame:IsShown() and frame.iconDataProvider then
+            anyOpen = true
+            lines[#lines + 1] = ("%s: %d icons in provider, %d indexed"):format(
+                frame:GetName() or "picker", frame.iconDataProvider:GetNumIcons(), #pickers[frame].nameIndex)
+        end
+    end
+    if not anyOpen then
+        lines[#lines + 1] = "no icon picker open"
     end
     ns.ShowReport("BMI Debug", lines)
 end, "Print search diagnostics")
