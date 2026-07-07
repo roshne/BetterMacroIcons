@@ -21,6 +21,8 @@
     "MacroFrame",
     "IconSelectorPopupFrameModes",
     "TransmogFrame",
+    "GearManagerPopupFrame",
+    "GuildBankPopupFrame",
     "InCombatLockdown",
     "C_AddOns",
     "ShowUIPanel",

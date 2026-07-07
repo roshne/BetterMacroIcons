@@ -14,11 +14,14 @@ local SEARCH_H = 26
 --   prevSearch  = query filteredMap currently reflects; nil forces a full scan
 local pickers = {}
 
--- The supported pickers: the load-on-demand Blizzard addon that creates each popup
--- frame, and how to reach the frame once it exists.
+-- The supported pickers: the Blizzard addon that creates each popup frame, and how to
+-- reach the frame once it exists. All are load-on-demand except Blizzard_UIPanels_Game
+-- (startup — always caught by the load-time sweep below).
 local PICKER_ADDONS = {
-    ["Blizzard_MacroUI"]  = function() return MacroPopupFrame end,
-    ["Blizzard_Transmog"] = function() return TransmogFrame.OutfitPopup end,
+    ["Blizzard_MacroUI"]        = function() return MacroPopupFrame end,
+    ["Blizzard_Transmog"]       = function() return TransmogFrame.OutfitPopup end,
+    ["Blizzard_UIPanels_Game"]  = function() return GearManagerPopupFrame end,
+    ["Blizzard_GuildBankUI"]    = function() return GuildBankPopupFrame end,
 }
 
 -- Resolve the bundled Interface\Icons name list (ns.iconNames) to fileIDs so the

@@ -42,9 +42,12 @@ std = {
     "MacroFrame",
     "IconSelectorPopupFrameModes",
 
-    -- Blizzard_Transmog global — the outfit-save popup (TransmogFrame.OutfitPopup) is the
-    -- second icon picker we hook
+    -- The other hooked icon pickers: the transmog outfit-save popup (TransmogFrame.OutfitPopup,
+    -- Blizzard_Transmog), the equipment set manager (Blizzard_UIPanels_Game), and the guild
+    -- bank tab popup (Blizzard_GuildBankUI)
     "TransmogFrame",
+    "GearManagerPopupFrame",
+    "GuildBankPopupFrame",
 
     -- `/bmi open` — load + show the macro UI on demand
     "InCombatLockdown",
