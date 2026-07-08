@@ -1,0 +1,22 @@
+name: release
+
+on:
+  schedule:
+    # 14:00 UTC year-round → 10:00 ET during EDT, 09:00 ET during EST.
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+# Needed to create tags, releases, and push the version-bump commit.
+permissions:
+  contents: write
+
+# Only one release run at a time. If a second push lands while a release is
+# in progress, queue it — don't cancel.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: roshne/addon-ci/.github/workflows/release.yml@main
+    secrets: inherit
