@@ -1,6 +1,12 @@
 ---@class BetterMacroIcons: AddOn
 local ns = LibNAddOn(...)
 
+-- Surface a "Changelog" button in the Better Macro Icons settings category,
+-- opening the release history (ns.changelog, from changelog.lua) in the shared
+-- CopyWindow. No parent → a top-level category, since the addon has no other
+-- settings of its own.
+ns:RegisterChangelog()
+
 local fileIDMap = {}  -- fileID integer → lowercase icon name (built once per session)
 local SEARCH_DEBOUNCE = 100  -- ms to coalesce keystrokes before filtering
 

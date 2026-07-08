@@ -43,6 +43,10 @@ see how many would be removed without deleting anything. These macros are regene
 addons when needed, so deleting them is safe — if you kept Plumber's teleport macro on an action
 bar, re-drag the House button from the Housing dashboard to recreate it.
 
+## Changelog
+
+To see what changed in each release without leaving the game, open the game's **Settings → AddOns → Better Macro Icons** panel and click **Changelog → View**. The release history opens in a scrollable window (a copyable one when LibNUI is present).
+
 ## Dependencies
 
 - **LibNAddOn** — required; must be installed and enabled.
