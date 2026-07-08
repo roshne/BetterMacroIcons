@@ -1,6 +1,6 @@
 # Better Macro Icons
 
-Adds a **live search box**, **spell-name & custom search terms**, and **informative tooltips** to Blizzard's icon pickers: the **macro** icon picker, the **transmog outfit** save/edit dialog, the **equipment set** manager, and the **guild bank tab** picker.
+Adds a **live search box**, **spell-name & custom search terms**, and **informative tooltips** to Blizzard's icon pickers: the **macro** icon picker, the **transmog outfit** save/edit dialog, the **equipment set** manager, the **guild bank tab** picker, and the **bank tab settings** menu (character and warband bank).
 
 WoW 12.0 stopped exposing icon names through the macro API (the picker now serves bare texture IDs), so the built-in picker has no way to search. Better Macro Icons bundles the full `Interface\Icons` name list and resolves it back to those IDs, making every icon findable by name again — and lets you find icons by the **spell** that uses them or by your **own** words.
 
@@ -12,11 +12,12 @@ WoW 12.0 stopped exposing icon names through the macro API (the picker now serve
 - **Custom search terms** — right-click any icon in the grid to tag it with a word or phrase, then find it later by that term. Terms are account-wide and persist.
 - **Informative tooltips** — hover any icon to see its texture name, plus the spell name(s) and custom terms that make it findable.
 - Works across the picker's filter tabs (All Icons / Spell / Item) and while scrolling.
-- **Every icon picker** — the same search box, tooltips, and custom terms appear in the transmog outfit dialog, the equipment set manager, and the guild bank tab picker. Custom terms are shared: tag an icon once, find it in any picker.
+- **Every icon picker** — the same search box, tooltips, and custom terms appear in the transmog outfit dialog, the equipment set manager, the guild bank tab picker, and the bank tab settings menu. Custom terms are shared: tag an icon once, find it in any picker.
+- **Works with Bagnon** — if you use Bagnon, it replaces the bank with its own window; the bank tab icon search works there too, automatically.
 
 ## Usage
 
-Open the macro UI (`/macro`), create or edit a macro, and click its icon button. The search box appears above the icon grid; start typing to filter. Hover an icon to see its name and terms, or **right-click** it to add/remove your own search terms. The same controls appear when saving or editing a transmog outfit, an equipment set, or a guild bank tab.
+Open the macro UI (`/macro`), create or edit a macro, and click its icon button. The search box appears above the icon grid; start typing to filter. Hover an icon to see its name and terms, or **right-click** it to add/remove your own search terms. The same controls appear when saving or editing a transmog outfit, an equipment set, a guild bank tab, or a character/warband bank tab.
 
 Spell names are gathered automatically the first time you log in each character (and whenever you learn new spells). Run `/bmi scan` any time you want to force a re-read of the current character's spellbook, and `/bmi coverage` to see which class/specs and races you've captured so far versus which are still missing.
 

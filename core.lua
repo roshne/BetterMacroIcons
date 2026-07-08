@@ -20,14 +20,30 @@ local SEARCH_H = 26
 --   prevSearch  = query filteredMap currently reflects; nil forces a full scan
 local pickers = {}
 
--- The supported pickers: the Blizzard addon that creates each popup frame, and how to
--- reach the frame once it exists. All are load-on-demand except Blizzard_UIPanels_Game
--- (startup — always caught by the load-time sweep below).
+-- The supported pickers: the addon that creates each popup frame, and how to reach the
+-- frames once they exist. All are Blizzard load-on-demand pickers except Blizzard_UIPanels_Game
+-- (startup — always caught by the load-time sweep below) and the optional Bagnon_Bank
+-- integration (a third-party bag addon whose entry only takes effect when it's installed).
+-- `gap` is the vertical clearance between the search box's bottom and the IconSelector's
+-- top. The bank tab menu re-anchors the template's icon-type dropdown + selection text TO
+-- the IconSelector (they ride along when we shift it down), so its box must clear that
+-- ~30px row; in every other picker those elements are frame-anchored and stay put.
 local PICKER_ADDONS = {
-    ["Blizzard_MacroUI"]        = function() return MacroPopupFrame end,
-    ["Blizzard_Transmog"]       = function() return TransmogFrame.OutfitPopup end,
-    ["Blizzard_UIPanels_Game"]  = function() return GearManagerPopupFrame end,
-    ["Blizzard_GuildBankUI"]    = function() return GuildBankPopupFrame end,
+    ["Blizzard_MacroUI"]        = { { frame = function() return MacroPopupFrame end } },
+    ["Blizzard_Transmog"]       = { { frame = function() return TransmogFrame.OutfitPopup end } },
+    ["Blizzard_UIPanels_Game"]  = {
+        { frame = function() return GearManagerPopupFrame end },
+        { frame = function() return BankPanel.TabSettingsMenu end, gap = 32 },
+    },
+    ["Blizzard_GuildBankUI"]    = { { frame = function() return GuildBankPopupFrame end } },
+
+    -- Bagnon replaces the bank UI and shows its own BankPanelTabSettingsMenuTemplate instance
+    -- (Bagnon.BankBag.Settings — a class-shared frame reparented onto the clicked tab in
+    -- BagBrother's Bag:ShowMenu) instead of Blizzard's BankPanel.TabSettingsMenu, so the entry
+    -- above never fires for Bagnon users. Same template, so the same gap applies. The getter is
+    -- guarded (it resolves to nil on a Bagnon build that predates the class) and hookAddonPickers
+    -- skips a nil frame — this is a soft, optional integration, present only when Bagnon is too.
+    ["Bagnon_Bank"]             = { { frame = function() return Bagnon and Bagnon.BankBag and Bagnon.BankBag.Settings end, gap = 32 } },
 }
 
 -- Resolve the bundled Interface\Icons name list (ns.iconNames) to fileIDs so the
@@ -201,15 +217,20 @@ end
 local function injectSearchBox(frame)
     if frame._bmiSearchBox then return end
 
+    -- Grow the popup and shift the icon grid down to open a strip for the search box.
+    -- The shift is relative to the selector's existing anchor (not hardcoded frame
+    -- offsets) because pickers position it differently — the standard template anchors
+    -- it to the frame at (21, -97), the bank tab menu to its BorderBox at (21, -196).
     frame:SetHeight(frame:GetHeight() + SEARCH_H)
+    local point, relTo, relPoint, x, y = frame.IconSelector:GetPoint(1)
     frame.IconSelector:ClearAllPoints()
-    frame.IconSelector:SetPoint("TOPLEFT", frame, "TOPLEFT", 21, -(97 + SEARCH_H))
+    frame.IconSelector:SetPoint(point, relTo, relPoint, x, y - SEARCH_H)
 
     -- Anonymous on purpose: a global name would collide across picker instances, and
     -- SearchBoxTemplate's children are all parentKey-addressed so no name is needed.
     local box = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
     box:SetSize(494, 20)
-    box:SetPoint("TOPLEFT", frame, "TOPLEFT", 21, -99)
+    box:SetPoint("BOTTOMLEFT", frame.IconSelector, "TOPLEFT", 0, pickers[frame].gap)
     box:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         pickers[frame].searchText = self:GetText():lower()
@@ -237,9 +258,9 @@ end
 -- HookScript("OnShow") is used (not hooksecurefunc) because the <OnShow method="OnShow"/>
 -- XML binding captures the method reference at frame creation, so a Lua-method hook
 -- would never fire.
-local function hookPicker(frame)
+local function hookPicker(frame, gap)
     if pickers[frame] then return end
-    pickers[frame] = { nameIndex = {}, filteredMap = {}, searchText = "", prevSearch = nil }
+    pickers[frame] = { nameIndex = {}, filteredMap = {}, searchText = "", prevSearch = nil, gap = gap or 4 }
 
     installButtonHandlers(frame.IconSelector)
 
@@ -285,19 +306,28 @@ function ns.ShowReport(title, lines)
     end
 end
 
+local function hookAddonPickers(entries)
+    for _, entry in ipairs(entries) do
+        local frame = entry.frame()
+        if frame then  -- a third-party getter (Bagnon) resolves to nil on an incompatible build
+            hookPicker(frame, entry.gap)
+        end
+    end
+end
+
 ns:registerEvent("ADDON_LOADED", function(self, addonName)
-    local getFrame = PICKER_ADDONS[addonName]
-    if getFrame then
-        hookPicker(getFrame())
+    local entries = PICKER_ADDONS[addonName]
+    if entries then
+        hookAddonPickers(entries)
     end
 end)
 
 -- A picker's Blizzard addon can already be loaded when we load (e.g. after a /reload with
 -- its UI open, load-on-demand addons come back up before third-party addons, so their
 -- ADDON_LOADED fired before our listener existed). Hook anything already present.
-for addonName, getFrame in pairs(PICKER_ADDONS) do
+for addonName, entries in pairs(PICKER_ADDONS) do
     if C_AddOns.IsAddOnLoaded(addonName) then
-        hookPicker(getFrame())
+        hookAddonPickers(entries)
     end
 end
 
