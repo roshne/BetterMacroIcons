@@ -1,2 +1,5 @@
 .DS_Store
 Thumbs.db
+
+# Local build/release artifacts (packaged CurseForge zips built from the committed tree)
+dist/
