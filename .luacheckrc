@@ -43,11 +43,16 @@ std = {
     "IconSelectorPopupFrameModes",
 
     -- The other hooked icon pickers: the transmog outfit-save popup (TransmogFrame.OutfitPopup,
-    -- Blizzard_Transmog), the equipment set manager (Blizzard_UIPanels_Game), and the guild
-    -- bank tab popup (Blizzard_GuildBankUI)
+    -- Blizzard_Transmog), the equipment set manager + bank tab menu (BankPanel.TabSettingsMenu,
+    -- both Blizzard_UIPanels_Game), and the guild bank tab popup (Blizzard_GuildBankUI)
     "TransmogFrame",
     "GearManagerPopupFrame",
+    "BankPanel",
     "GuildBankPopupFrame",
+
+    -- Optional Bagnon integration: its bank module shows Bagnon.BankBag.Settings (a
+    -- BankPanelTabSettingsMenuTemplate instance) in place of Blizzard's bank tab menu
+    "Bagnon",
 
     -- `/bmi open` — load + show the macro UI on demand
     "InCombatLockdown",

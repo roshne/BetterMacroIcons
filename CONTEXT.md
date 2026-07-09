@@ -1,8 +1,8 @@
 # BetterMacroIcons
 
-**Deps:** LibNAddOn (+ optional LibNUI) · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi open`, `/bmi scan`, `/bmi reset`, `/bmi coverage`, `/bmi export`, `/bmi diff`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI, Blizzard_Transmog, Blizzard_UIPanels_Game, Blizzard_GuildBankUI)
+**Deps:** LibNAddOn (+ optional LibNUI) · **SavedVars:** `BetterMacroIconsDB` (account-wide, `X-NUI-DB`, DB v1) · **Commands:** `/bmi open`, `/bmi scan`, `/bmi reset`, `/bmi coverage`, `/bmi export`, `/bmi diff`, `/bmi debug`, `/bmi cleanup [preview]` · **UI:** raw WoW API (hooks Blizzard_MacroUI, Blizzard_Transmog, Blizzard_UIPanels_Game, Blizzard_GuildBankUI, + optional Bagnon_Bank)
 
-Injects a live-search box into the Blizzard icon pickers built on `IconSelectorPopupFrameTemplate`: `MacroPopupFrame` (the macro editor's icon button), `TransmogFrame.OutfitPopup` (the transmog outfit save/edit dialog), `GearManagerPopupFrame` (equipment set save/edit), and `GuildBankPopupFrame` (guild bank tab name/icon). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
+Injects a live-search box into the Blizzard icon pickers built on `IconSelectorPopupFrameTemplate`: `MacroPopupFrame` (the macro editor's icon button), `TransmogFrame.OutfitPopup` (the transmog outfit save/edit dialog), `GearManagerPopupFrame` (equipment set save/edit), `GuildBankPopupFrame` (guild bank tab name/icon), and `BankPanel.TabSettingsMenu` (character/warband bank tab settings). When **Bagnon** is installed it replaces the bank UI with its own copy of that last menu, so BMI hooks that too (`Bagnon.BankBag.Settings`). Filters the icon grid in real-time as you type, without touching any Blizzard-protected state. Icons are searchable by their bundled file name **plus** two optional term sources: spell names read from the spellbook (`scan.lua`) and user-curated aliases (`aliases.lua`).
 
 ---
 
@@ -25,7 +25,7 @@ Injects a live-search box into the Blizzard icon pickers built on `IconSelectorP
 
 ## Architecture
 
-`PICKER_ADDONS` maps each Blizzard addon to its picker frame: `Blizzard_MacroUI` → `MacroPopupFrame`, `Blizzard_Transmog` → `TransmogFrame.OutfitPopup`, `Blizzard_UIPanels_Game` → `GearManagerPopupFrame` (equipment sets; startup addon, so always hooked by the load-time sweep), `Blizzard_GuildBankUI` → `GuildBankPopupFrame`. All inherit `IconSelectorPopupFrameTemplate`, so `hookPicker(frame)` installs the identical three hooks on each (on `ADDON_LOADED`, plus a load-time `C_AddOns.IsAddOnLoaded` sweep for pickers that loaded before us — Blizzard startup addons always do, and after a `/reload` with their UI open, LOD Blizzard addons come back up before third-party addons too):
+`PICKER_ADDONS` maps each Blizzard addon to a **list** of picker entries (`{ frame = fn, gap = n? }`): `Blizzard_MacroUI` → `MacroPopupFrame`, `Blizzard_Transmog` → `TransmogFrame.OutfitPopup`, `Blizzard_UIPanels_Game` → `GearManagerPopupFrame` **and** `BankPanel.TabSettingsMenu` (startup addon, so always hooked by the load-time sweep), `Blizzard_GuildBankUI` → `GuildBankPopupFrame`, and the optional `Bagnon_Bank` → `Bagnon.BankBag.Settings` (a third-party bag addon; its getter is guarded and `hookAddonPickers` skips a nil frame, so the entry is inert unless Bagnon is installed). All inherit `IconSelectorPopupFrameTemplate`, so `hookPicker(frame, gap)` installs the identical three hooks on each (on `ADDON_LOADED`, plus a load-time `C_AddOns.IsAddOnLoaded` sweep for pickers that loaded before us — Blizzard startup addons always do, and after a `/reload` with their UI open, LOD Blizzard addons come back up before third-party addons too):
 
 | Hook | When | Action |
 |---|---|---|
@@ -100,9 +100,10 @@ iconName(tex) / ns.IconName(tex)  -- tex path|fileID → lowercase base name (""
 rebuildNameIndex(frame)   -- refill the frame's nameIndex = name + SpellTermsFor + AliasTermsFor (guarded)
 tokenize(str) / matchesAll(name, tokens)  -- multi-token AND matcher
 applyFilter(frame)        -- refill the frame's filteredMap (empty / incremental-narrow / full-scan branches)
-injectSearchBox(frame)    -- once per frame; grows frame by SEARCH_H (26px), adds an anonymous SearchBoxTemplate box
+injectSearchBox(frame)    -- once per frame; grows frame by SEARCH_H (26px), shifts IconSelector via its
+                          -- own anchor (GetPoint), adds an anonymous SearchBoxTemplate box `gap` px above it
 installButtonHandlers(sel)-- one-time wrap per selector of the setup callback; per-button tooltip + OnMouseUp
-hookPicker(frame)         -- seed pickers[frame] state + install the three hooks + button handlers
+hookPicker(frame, gap)    -- seed pickers[frame] state (gap default 4) + install the three hooks + button handlers
 tooltipOnEnter(button)    -- name line + "Spells:"/"Aliases:" lines (via the seams)
 ns.refreshSearch()        -- rebuildNameIndex + applyFilter on every shown picker
 
@@ -137,7 +138,7 @@ ns.onIconRightClick(owner, fileID)  -- MenuUtil context menu: add term / remove-
 
 ## Icon Provider
 
-Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provider (extra-icon type by picker: macro `.Spellbook`, transmog `.Transmog` — prepends the viewed outfit's item icons, gear manager `.Equipment` — prepends equipped-item icons, guild bank `.None`; all but the macro popup recreate the provider every OnShow):
+Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provider (extra-icon type by picker: macro `.Spellbook`, transmog `.Transmog` — prepends the viewed outfit's item icons, gear manager `.Equipment` — prepends equipped-item icons, guild bank + bank tab `.None`; all but the macro popup recreate the provider every OnShow):
 
 | Method | Returns |
 |---|---|
@@ -162,7 +163,8 @@ Each picker's `frame.iconDataProvider` is a `C_MacroIconPicker`-style data provi
 | `MacroPopupFrame` | Blizzard_MacroUI icon picker frame |
 | `CreateFrame`, `hooksecurefunc`, `wipe`, `table` | Standard WoW/Lua API |
 | `MacroFrame`, `IconSelectorPopupFrameModes`, `InCombatLockdown`, `C_AddOns`, `ShowUIPanel` | `core.lua` — `/bmi open`: load + show the macro UI and the picker on demand (`MacroPopupFrame` is a *written* global here — `.mode` is set) |
-| `TransmogFrame`, `GearManagerPopupFrame`, `GuildBankPopupFrame` | `core.lua` — the other hooked pickers: transmog outfit (Blizzard_Transmog), equipment set (Blizzard_UIPanels_Game), guild bank tab (Blizzard_GuildBankUI) |
+| `TransmogFrame`, `GearManagerPopupFrame`, `BankPanel`, `GuildBankPopupFrame` | `core.lua` — the other hooked pickers: transmog outfit (Blizzard_Transmog), equipment set + bank tab settings (`BankPanel.TabSettingsMenu`, both Blizzard_UIPanels_Game), guild bank tab (Blizzard_GuildBankUI) |
+| `Bagnon` | `core.lua` — optional integration: `Bagnon.BankBag.Settings` is Bagnon's own bank tab settings menu (`Bagnon_Bank`), hooked in place of `BankPanel.TabSettingsMenu` for Bagnon users |
 | `C_SpellBook`, `Enum`, `UnitRace`, `UnitClass` | `scan.lua` — spellbook scan; `Enum.SpellBookSkillLineIndex.General` routes racials vs class-base; `UnitClass` → classID for `byClass` |
 | `GetNumClasses`, `GetClassInfo`, `C_SpecializationInfo`, `GetSpecializationInfoForClassID`, `GetSpecializationInfoByID`, `C_CreatureInfo` | `scan.lua`/`dataset.lua` — `/bmi coverage` + `/bmi diff`: enumerate class/specs, resolve spec/race names (`GetSpecializationInfoByID` names a spec from its id in the diff) |
 | `LibNUI` | `scan.lua` — optional; `/bmi coverage` uses `LibNUI.ShowCopyWindow` (the `/wdebug` widget) when present, else chat. `## OptionalDeps: LibNUI` in the toc orders the load |
@@ -205,3 +207,5 @@ Wrap each line as `"<name>",` inside `ns.iconNames = { … }`. Names that don't 
 - **Extra icons can vanish during search** — the transmog/gear-manager providers prepend the viewed outfit's / equipped items' icons; any not in the bundled listfile resolve to `""` in `iconName` and match no query (same as unknown fileIDs in the macro picker). Cosmetic only.
 - **`SetIconFilterInternal` early-returns when the filter is unchanged** (the transmog/gear-manager popups re-set "All" each show), but `hooksecurefunc` fires regardless — the harmless double rebuild on show is expected.
 - **`GuildBankPopupFrame` repositions itself in OnShow** (`ClearAllPoints` + screen-edge check) — position only; it never resizes, so the one-time `injectSearchBox` height growth is untouched.
+- **`BankPanel.TabSettingsMenu` has a custom layout** — its OnLoad-only `OverrideInheritedAnchoring` (594px tall, selector at BorderBox −196, deposit settings above) re-anchors the icon-type dropdown + selection text **to the IconSelector**, so they ride along with our selector shift; the entry's `gap = 32` clears that row when placing the box. Its `Update()` also early-returns until `selectedTabData` is set, and `SetSelectedTab` re-runs Update while shown (switching tabs with the menu open) — the Update hook re-applies the filter.
+- **Bagnon shows its own copy of that menu**, not Blizzard's — `Bagnon.BankBag.Settings` is a single class-shared `BankPanelTabSettingsMenuTemplate` instance created once by BagBrother's bank module, then reparented onto whichever tab you right-click (in `Bag:ShowMenu`). Because it's the same template, the `gap = 32` and the whole `injectSearchBox` path apply unchanged; the search box (a child of the Settings frame, anchored to its `IconSelector`) rides along with the reparent. The getter reaches it via the global `Bagnon` namespace (`base.lua` registers every class as `Addon[name]`), guarded so a Bagnon build without the class is a no-op rather than an error. The frame only exists once `Bagnon_Bank` (LOD) has loaded — i.e. after the bank is first opened — which is exactly when its `ADDON_LOADED` fires.
