@@ -7,6 +7,14 @@ local ns = select(2, ...)
 -- release notes.
 ---@type { version: string, notes: string }[]
 ns.changelog = {
+  { version = "12.0.7-r2", notes = [==[
+### Features
+- search box in the bank tab settings menu (default + Bagnon) (#25)
+
+### CI
+- add Discord merged-PR notification caller (addon-ci) (#24)
+
+]==] },
   { version = "12.0.7-r1", notes = [==[
 ### Features
 - in-game changelog viewer via LibNAddOn (#18)
