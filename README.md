@@ -4,6 +4,8 @@ Adds a **live search box**, **spell-name & custom search terms**, and **informat
 
 WoW 12.0 stopped exposing icon names through the macro API (the picker now serves bare texture IDs), so the built-in picker has no way to search. Better Macro Icons bundles the full `Interface\Icons` name list and resolves it back to those IDs, making every icon findable by name again — and lets you find icons by the **spell** that uses them or by your **own** words.
 
+> 🐛 **Found a bug or have a request?** Please report it on **[GitHub Issues](https://github.com/roshne/BetterMacroIcons/issues)** — I don't reliably see CurseForge comments, so that's the surest way to reach me and get it fixed.
+
 ## Features
 
 - **Search box** at the top of the icon picker — type any part of an icon's file name (e.g. `frostbolt`, `inv_sword`, `spell_fire`) to filter the grid live as you type.
