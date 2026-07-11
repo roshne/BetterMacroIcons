@@ -7,6 +7,11 @@ local ns = select(2, ...)
 -- release notes.
 ---@type { version: string, notes: string }[]
 ns.changelog = {
+  { version = "12.0.7-r3", notes = [==[
+### Documentation
+- list the guild bank tab picker in Notes (#27)
+
+]==] },
   { version = "12.0.7-r2", notes = [==[
 ### Features
 - search box in the bank tab settings menu (default + Bagnon) (#25)
