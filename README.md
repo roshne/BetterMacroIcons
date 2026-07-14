@@ -53,7 +53,8 @@ To see what changed in each release without leaving the game, open the game's **
 ## Dependencies
 
 - **LibNAddOn** — required; must be installed and enabled.
-- **LibNUI** — optional; if present, `/bmi coverage` shows its report in a copyable window (otherwise it prints to chat).
+- **LibNUI** *(optional)* — if present, `/bmi coverage` and the in-game changelog open in a copyable window (otherwise they print to chat).
+- **Bagnon** *(optional)* — if you use Bagnon, the bank-tab icon search works inside its replacement bank window too.
 
 ## Saved data
 
