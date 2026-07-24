@@ -160,9 +160,37 @@ local function queueScan()
     end)
 end
 
+-- Wipe the racial + class-base stores. bySpec is left alone: a spec line always carries a
+-- specID, so it has always been bucketed correctly. Shared by the migration below and /bmi reset.
+local function wipeRaceClassStores()
+    ns.db.spellTermsByRace = {}
+    ns.db.spellTermsByClass = {}
+end
+
+-- Schema version of the persisted stores. Like the three bucket tables it is owned entirely by
+-- this file — nothing outside scan.lua reads db.spellTermsSchema — so deleting the module leaves
+-- no dangling reference (the key just lingers in SavedVariables with them). Bump it to force a
+-- one-time re-wipe of the race/class buckets on every account's next login.
+local STORE_SCHEMA = 1
+
+-- One-time repair of the persisted stores, gated on that marker. Accounts that scanned before
+-- the skill-line-index bucketing fix have class-base spells leaked into byRace, and a default
+-- scan is additive (it only ever adds names), so without this they would linger forever — only
+-- /bmi reset or a forced /bmi scan clears them. Search is unaffected either way (rebuildMerged
+-- unions every bucket), but the mis-bucketing makes /bmi diff noisy and would re-pollute a
+-- /bmi export. Wiping costs no coverage: rebuildMerged immediately folds the shipped baseline
+-- (data/spellterms.lua) back in, and live scans refill the buckets cleanly as characters are
+-- played. A fresh install has nothing to wipe and just records the marker.
+local function migrateStores()
+    if ns.db.spellTermsSchema == STORE_SCHEMA then return end
+    wipeRaceClassStores()
+    ns.db.spellTermsSchema = STORE_SCHEMA
+end
+
 ns:registerEvent("ADDON_LOADED", function(_, addonName)
     if addonName ~= ns._NAME then return end
     stores()         -- ensure buckets exist
+    migrateStores()  -- one-time race/class wipe on upgrade (no-op once the marker is current)
     rebuildMerged()  -- search works immediately from persisted data, before the first scan
 end)
 
@@ -177,10 +205,7 @@ end, "Rescan your spellbook for spell-name search terms")
 -- Wipe the racial + class-base stores (keeps the spec store, which is always correctly bucketed)
 -- so they rebuild cleanly — e.g. after a bucketing fix. Re-log or /bmi scan each character to refill.
 ns:registerCommand("reset", nil, function()
-    if ns.db then
-        ns.db.spellTermsByRace = {}
-        ns.db.spellTermsByClass = {}
-    end
+    if ns.db then wipeRaceClassStores() end
     rebuildMerged()
     if ns.refreshSearch then ns.refreshSearch() end
     ns:Print("cleared racial + class-base terms (spec terms kept) — re-log or /bmi scan each character to rebuild")
