@@ -20,7 +20,7 @@ Standalone WoW Retail addon by Roshne (Interface 120000+). Injects a live-search
 | LuaLS annotations | `---@class`, `---@field`, `---@param`, `---@return` |
 | No error handling | WoW API errors surface in-game; no defensive nil-checks on internal invariants |
 | No standalone utilities | Everything belongs on the addon namespace or a local within the file |
-| Testing | In-game via `/reload`; `luacheck` for static analysis |
+| Testing | `busted` specs in `spec/` for pure logic; in-game via `/reload` for anything touching Blizzard frames; `luacheck` for static analysis |
 
 ## Namespace Imports & Typing
 
@@ -55,6 +55,18 @@ Keep individual files to **200–300 lines maximum** (the bundled `icons.lua` da
 ## Lint
 
 `luacheck` is **strict** — any warning fails CI (`.github/workflows/ci.yml`) and the repo lints clean; keep it that way. When you use a new WoW global, add it to `.luacheckrc`'s `read_globals` **and** the mirrored `.luarc.json` `diagnostics.globals` (CI only lints the former; the latter feeds the editor). Globals you **write to** (e.g. `StaticPopupDialogs`) go in `.luacheckrc`'s `globals`, not `read_globals`.
+
+## Tests
+
+`busted` specs live in `spec/` and run from the repo root (`.busted` sets `ROOT = spec`); CI runs them
+alongside `luacheck`. Only `*_spec.lua` files are collected, so `spec/bmi.lua` is the shared loader:
+it stubs the WoW globals a file needs and runs it the way WoW does —
+`assert(loadfile("dataset.lua"))("BetterMacroIcons", ns)`, supplying the `...` vararg that every file
+reads back via `local ns = select(2, ...)`.
+
+Unit-test the pure logic (term merging, the export/diff tooling); leave anything that needs live
+Blizzard frames or `C_*` state to in-game testing. A spec file needs no new `.luacheckrc` globals —
+the `files["spec/**/*.lua"]` block already grants the busted std plus the stubs.
 
 ## In-Game Debugging
 
