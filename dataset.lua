@@ -9,14 +9,24 @@ local ns = select(2, ...)
 -- Curated aliases live in a separate store (db.aliases) and are intentionally NOT considered
 -- here — this compares spell/racial terms only. Removable: delete this file + its .toc line.
 
--- Dedup-append a space-bounded name into bucket[fileID] (mirrors scan.lua's addName).
-local function addTerm(bucket, fileID, name)
-    local cur = bucket[fileID]
-    if not cur then
-        bucket[fileID] = " " .. name .. " "
-    elseif not cur:find(" " .. name .. " ", 1, true) then
-        bucket[fileID] = cur .. name .. " "
-    end
+-- Trim leading/trailing whitespace (stored blobs carry a leading + trailing space).
+local function trim(s)
+    return s:match("^%s*(.-)%s*$")
+end
+
+-- Union two whole-name blobs for one icon WITHOUT splitting on spaces. Spell names themselves
+-- contain spaces (" final verdict templar's verdict "), and the store concatenates whole names
+-- bounded by single spaces, so the per-name boundaries are unrecoverable from the blob alone --
+-- re-splitting per word (the old bug) collapses a word that two names share and corrupts the
+-- second name. Instead we carry each blob through whole and dedup at blob granularity: keep the
+-- superset when one blob contains the other (the usual case -- the same spec/race/class rescanned,
+-- or a fresh scan that extends the baseline), and only on a genuine cross-patch partial overlap
+-- splice the two so no name is dropped. Mirrors scan.lua's addName, which appends whole names.
+local function mergeBlob(cur, add)
+    if cur == nil or cur == add then return add end
+    if cur:find(add, 1, true) then return cur end   -- add is contained in cur
+    if add:find(cur, 1, true) then return add end    -- cur is contained in add
+    return cur .. add:sub(2)                          -- partial overlap: keep both names' text
 end
 
 local function stores()
@@ -24,8 +34,10 @@ local function stores()
     return db.spellTermsBySpec or {}, db.spellTermsByRace or {}, db.spellTermsByClass or {}
 end
 
--- Merge live + bundled section-sets into one, deduped per icon. `canon` (optional) folds keys
--- to their canonical id (races), so a stale variant key collapses into the canonical section.
+-- Merge live + bundled section-sets into one, unioned per icon as whole names (never re-split).
+-- Bundled is folded first, live second, so live wins any genuine partial overlap. `canon`
+-- (optional) folds keys to their canonical id (races), so a stale variant key collapses into the
+-- canonical section.
 local function mergeBuckets(liveT, bunT, canon)
     local out = {}
     local function fold(src)
@@ -33,8 +45,8 @@ local function mergeBuckets(liveT, bunT, canon)
             local k = (canon and type(key) == "number" and canon(key)) or key
             local dst = out[k] or {}
             out[k] = dst
-            for fileID, names in pairs(section) do
-                for name in names:gmatch("%S+") do addTerm(dst, fileID, name) end
+            for fileID, blob in pairs(section) do
+                dst[fileID] = mergeBlob(dst[fileID], blob)
             end
         end
     end
@@ -81,15 +93,25 @@ ns:registerCommand("export", nil, function()
     ns.ShowReport("BMI Export — paste into data/spellterms.lua", lines)
 end, "Dump the pooled spell terms as data/spellterms.lua (copy window)")
 
--- Names not present in the bundled section for the same icon (i.e. newly discovered live).
-local function newNames(liveNames, bunNames)
-    local news = {}
-    for name in liveNames:gmatch("%S+") do
-        if not (bunNames or ""):find(" " .. name .. " ", 1, true) then
-            news[#news + 1] = name
-        end
+-- Live spell terms for an icon that the bundled baseline lacks, as a descriptive string (or nil
+-- when the live blob adds nothing). Operates on whole names, never per word: spell names contain
+-- spaces, so we compare blobs by containment rather than re-splitting (which would drop a word two
+-- names share and mis-report). Equal, or live is a subset of the bundle -> nil; a wholly new icon
+-- -> its whole blob; live extending the bundle -> the added run (the bundle's shared run excised).
+-- A concatenated blob can't be atomised back to individual names, so any added run is reported
+-- whole -- exactly the "new discovery" signal the maintainer wants.
+local function newNames(liveBlob, bunBlob)
+    bunBlob = bunBlob or ""
+    if liveBlob == bunBlob then return nil end
+    if bunBlob == "" then return trim(liveBlob) end
+    if bunBlob:find(liveBlob, 1, true) then return nil end   -- live is a subset of the bundle
+    local s, e = liveBlob:find(bunBlob, 1, true)             -- bundle is a subset of live: excise it
+    if s then
+        local collapsed = (liveBlob:sub(1, s) .. liveBlob:sub(e)):gsub("%s+", " ")
+        local rest = trim(collapsed)
+        return rest ~= "" and rest or nil
     end
-    return news
+    return trim(liveBlob)                                    -- partial overlap: report live whole
 end
 
 ns:registerCommand("diff", nil, function()
@@ -113,9 +135,9 @@ ns:registerCommand("diff", nil, function()
             table.sort(fids)
             for _, f in ipairs(fids) do
                 local news = newNames(live[k][f], bunSec[f])
-                if #news > 0 then
-                    total = total + #news
-                    lines[#lines + 1] = ("  %s [%d]: %s"):format(nameOf(k), f, table.concat(news, ", "))
+                if news then
+                    total = total + 1
+                    lines[#lines + 1] = ("  %s [%d]: %s"):format(nameOf(k), f, news)
                 end
             end
         end
@@ -137,7 +159,7 @@ ns:registerCommand("diff", nil, function()
     if total == 0 then
         ns.ShowReport("BMI Diff", { "live scan matches the bundled baseline — auto-discovery has found nothing new." })
     else
-        table.insert(lines, 1, ("live scan has %d spell term(s) not in the bundled baseline:"):format(total))
+        table.insert(lines, 1, ("live scan has %d icon(s) with spell terms beyond the bundled baseline:"):format(total))
         ns.ShowReport("BMI Diff", lines)
     end
 end, "Compare live scan vs bundled baseline — new discoveries only (aliases excluded)")
