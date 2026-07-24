@@ -1,0 +1,10 @@
+-- busted config. CI (roshne/addon-ci lua-test.yml) runs `busted --output=utfTerminal` from the
+-- repo root, so ROOT is the spec dir and lpath lets a spec require("spec.<helper>") from cwd.
+-- Only *_spec.lua files are collected as tests, so spec/bmi.lua (the loader) is not run as one.
+return {
+  default = {
+    ROOT = { "spec" },
+    lpath = "?.lua",
+    verbose = true,
+  },
+}

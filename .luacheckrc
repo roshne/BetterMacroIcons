@@ -10,6 +10,16 @@ exclude_files = {".lua", ".luarocks", ".install"}
 -- (matches `/bmi export` output), so exempt it from the line-length limit.
 files["data/spellterms.lua"] = { max_line_length = false }
 
+-- busted specs (run from the repo root; see .busted). They loadfile() an addon file with the
+-- (addonName, ns) vararg WoW passes it, against a hand-rolled namespace. The `std` below is a
+-- closed list, so the spec tree additionally needs the stdlib bits it uses plus the WoW globals
+-- it stubs onto _G for /bmi diff's name resolvers.
+files["spec/**/*.lua"] = {
+  std = "+busted",
+  read_globals = { "assert", "loadfile", "loadstring", "require", "string" },
+  globals = { "_G.GetSpecializationInfoByID", "_G.C_CreatureInfo" },
+}
+
 std = {
   -- Written globals (mutable): StaticPopupDialogs (we register BMI_ADD_TERM); MacroPopupFrame
   -- (`/bmi open` sets its .mode field before showing it).
