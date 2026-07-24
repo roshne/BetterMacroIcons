@@ -12,11 +12,19 @@ local BUNDLE = bmi.session().ns.bundledSpellTerms
 
 -- The marker value scan.lua currently writes. Discovered rather than hard-coded so an
 -- intentional bump doesn't fail the suite — the specs assert on behaviour, not on the number.
+-- It is asserted to be a number up front: were the marker write ever dropped, MARKER would be
+-- nil and every `assert.are.equal(MARKER, ...)` below would silently become nil == nil.
 local MARKER = (function()
     local h = bmi.session()
     h.login()
     return h.db.spellTermsSchema
 end)()
+
+describe("scan.lua schema marker", function()
+    it("is written as a number, so the marker assertions below can fail", function()
+        assert.is_number(MARKER)
+    end)
+end)
 
 -- A leaked class-base spell of the kind pre-#13 scans wrote into byRace: a Death Knight's Death
 -- Strike recorded under Blood Elf. The fileID is synthetic so it can never collide with the
@@ -183,10 +191,17 @@ describe("scan.lua migration effect on /bmi diff", function()
     -- The maintainer's client after #29/#30: bySpec matches the baseline it was exported from,
     -- while byRace still carries pre-#13 leakage. Acceptance criterion 4 is that /bmi diff reads
     -- 0 there with no post-migration scans, instead of needing a hand-run /bmi reset.
+    -- Sections are copied, not aliased: BUNDLE is shared by every spec in this file, and a live
+    -- store is writable (a /bmi scan addName()s straight into it), so handing out the baseline's
+    -- own tables would let one test corrupt the fixture for the rest.
     local function maintainerDB()
         local db = pollutedDB()
         db.spellTermsBySpec = {}
-        for specID, section in pairs(BUNDLE.bySpec) do db.spellTermsBySpec[specID] = section end
+        for specID, section in pairs(BUNDLE.bySpec) do
+            local copy = {}
+            for fileID, blob in pairs(section) do copy[fileID] = blob end
+            db.spellTermsBySpec[specID] = copy
+        end
         return db
     end
 

@@ -178,9 +178,10 @@ local STORE_SCHEMA = 1
 -- scan is additive (it only ever adds names), so without this they would linger forever — only
 -- /bmi reset or a forced /bmi scan clears them. Search is unaffected either way (rebuildMerged
 -- unions every bucket), but the mis-bucketing makes /bmi diff noisy and would re-pollute a
--- /bmi export. Wiping costs no coverage: rebuildMerged immediately folds the shipped baseline
--- (data/spellterms.lua) back in, and live scans refill the buckets cleanly as characters are
--- played. A fresh install has nothing to wipe and just records the marker.
+-- /bmi export. Wiping is near-free: rebuildMerged immediately folds the shipped baseline
+-- (data/spellterms.lua) back in, so every term the bundle carries stays searchable right through
+-- the migration. Only a term the bundle *lacks* goes missing, and only until that character is
+-- next played. A fresh install has nothing to wipe and just records the marker.
 local function migrateStores()
     if ns.db.spellTermsSchema == STORE_SCHEMA then return end
     wipeRaceClassStores()
