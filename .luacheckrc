@@ -12,12 +12,16 @@ files["data/spellterms.lua"] = { max_line_length = false }
 
 -- busted specs (run from the repo root; see .busted). They loadfile() an addon file with the
 -- (addonName, ns) vararg WoW passes it, against a hand-rolled namespace. The `std` below is a
--- closed list, so the spec tree additionally needs the stdlib bits it uses plus the WoW globals
--- it stubs onto _G for /bmi diff's name resolvers.
+-- closed list, so the spec tree additionally needs the stdlib bits it uses (io reads the toc to
+-- check which modules reference a store key) plus the WoW globals it stubs onto _G: /bmi diff's
+-- name resolvers, and the spellbook API + wipe that scan.lua drives.
 files["spec/**/*.lua"] = {
   std = "+busted",
-  read_globals = { "assert", "loadfile", "loadstring", "require", "string" },
-  globals = { "_G.GetSpecializationInfoByID", "_G.C_CreatureInfo" },
+  read_globals = { "assert", "io", "loadfile", "loadstring", "require", "string" },
+  globals = {
+    "_G.GetSpecializationInfoByID", "_G.C_CreatureInfo",
+    "_G.C_SpellBook", "_G.Enum", "_G.UnitClass", "_G.UnitRace", "_G.wipe",
+  },
 }
 
 std = {
