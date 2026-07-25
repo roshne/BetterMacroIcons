@@ -22,6 +22,10 @@ end
 -- superset when one blob contains the other (the usual case -- the same spec/race/class rescanned,
 -- or a fresh scan that extends the baseline), and only on a genuine cross-patch partial overlap
 -- splice the two so no name is dropped. Mirrors scan.lua's addName, which appends whole names.
+--
+-- Deliberately duplicated in scan.lua (same name), whose rebuildMerged needs the same semantics
+-- to build the merged lookup behind search + the tooltip: both modules are independently
+-- removable, so neither may read the other's copy. spec/scan_spec.lua pins the two together.
 local function mergeBlob(cur, add)
     if cur == nil or cur == add then return add end
     if cur:find(add, 1, true) then return cur end   -- add is contained in cur
