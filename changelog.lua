@@ -7,6 +7,19 @@ local ns = select(2, ...)
 -- release notes.
 ---@type { version: string, notes: string }[]
 ns.changelog = {
+  { version = "12.0.7-r5", notes = [==[
+### Bug Fixes
+- union whole-name blobs in rebuildMerged, not per word (#36)
+- operate /bmi export + diff on whole spell names, not words (#32)
+
+### Maintenance
+- wipe pre-fix byRace/byClass once on upgrade (#34)
+- regenerate spellterms.lua after byClass bucketing fix (#30)
+
+### Tests
+- add busted spec guarding whole-name export/diff (#33)
+
+]==] },
   { version = "12.0.7-r4", notes = [==[
 ### CI
 - add push-notify caller (one post per push, as Github-Repo-Updates) (roshne/Tooling#111)
