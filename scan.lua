@@ -61,25 +61,44 @@ local function addName(bucket, fileID, name)
     end
 end
 
+-- Union two whole-name blobs for one icon WITHOUT splitting on spaces. addName above appends
+-- each name entire, so " final verdict templar's verdict " holds TWO names separated by the same
+-- single space that separates words within a name -- the per-name boundaries are unrecoverable
+-- from the blob alone, and a per-word re-split silently corrupts any icon whose names share a
+-- word ("verdict" hits the space-bounded dedup and "templar's verdict" collapses to "templar's").
+-- So dedup at blob granularity instead: keep the superset when one blob contains the other (the
+-- usual case -- the same section held by both a live scan and the bundle), and on a genuine
+-- partial overlap splice the two so no name is dropped.
+--
+-- Deliberately duplicated in dataset.lua (mergeBlob), which needs the same semantics for
+-- /bmi export + /bmi diff: both modules are independently removable, so neither may read the
+-- other's copy. spec/scan_spec.lua pins the two to the same behaviour so they can't drift.
+local function mergeBlob(cur, add)
+    if cur == nil or cur == add then return add end
+    if cur:find(add, 1, true) then return cur end   -- add is contained in cur
+    if add:find(cur, 1, true) then return add end    -- cur is contained in add
+    return cur .. add:sub(2)                          -- partial overlap: keep both names' text
+end
+
 -- Recompute the in-memory union of every spec + race + class section (deduped per icon).
 local function rebuildMerged()
     wipe(mergedSpellTerms)
     local bySpec, byRace, byClass = stores()
     local function absorb(section)
-        for fileID, names in pairs(section) do
-            for name in names:gmatch("%S+") do
-                addName(mergedSpellTerms, fileID, name)
-            end
+        for fileID, blob in pairs(section) do
+            mergedSpellTerms[fileID] = mergeBlob(mergedSpellTerms[fileID], blob)
         end
     end
     local function absorbAll(t) for _, section in pairs(t) do absorb(section) end end
-    absorbAll(bySpec); absorbAll(byRace); absorbAll(byClass)
-    -- Fold in the baseline shipped with the addon (data/spellterms.lua), so a fresh install has
-    -- coverage out of the box; live scans merge on top (deduped). Optional file — guarded.
+    -- The baseline shipped with the addon (data/spellterms.lua) goes in FIRST, so a fresh install
+    -- has coverage out of the box and live scans merge on top (deduped) — the same bundled-then-
+    -- live order dataset.lua's mergeBuckets uses, so the merged lookup and /bmi export splice a
+    -- partial overlap identically. Optional file — guarded.
     local bundled = ns.bundledSpellTerms
     if bundled then
         absorbAll(bundled.bySpec or {}); absorbAll(bundled.byRace or {}); absorbAll(bundled.byClass or {})
     end
+    absorbAll(bySpec); absorbAll(byRace); absorbAll(byClass)
 end
 
 -- Scan the Player spellbook into the spec/race/class buckets, routed by skill-line index:

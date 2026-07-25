@@ -233,6 +233,115 @@ describe("scan.lua migration effect on /bmi diff", function()
     end)
 end)
 
+-- rebuildMerged's whole-name union (#35). The merged lookup feeds both search and the icon
+-- tooltip, so a per-word re-split there mangled the names the tooltip prints -- the display-side
+-- twin of the export/diff bug #32 fixed. Search never noticed (it is substring matching over the
+-- blob), which is why only the tooltip exposed it and why the #33 spec, guarding export/diff
+-- alone, let it survive.
+describe("scan.lua merged terms keep whole spell names", function()
+    -- Two Retribution Paladin spells sharing an icon AND the word "verdict", verbatim from
+    -- data/spellterms.lua -- the shape a per-word re-split corrupts: re-adding "verdict" hits the
+    -- space-bounded dedup, collapsing "templar's verdict" to "templar's".
+    local SHARED = " final verdict templar's verdict "
+    local RET, ICON = 70, 461860
+
+    -- A session always loads the real data/spellterms.lua, so isolating the live-store path means
+    -- dropping the baseline before login (rebuildMerged reads ns.bundledSpellTerms there).
+    local function liveOnly(db)
+        local h = bmi.session({ db = db })
+        h.ns.bundledSpellTerms = nil
+        h.login()
+        return h
+    end
+
+    it("serves a live blob whose two names share a word, intact", function()
+        local h = liveOnly({ spellTermsBySpec = { [RET] = { [ICON] = SHARED } } })
+        assert.are.equal(SHARED, h.ns.SpellTermsFor(ICON))
+    end)
+
+    it("serves the same blob intact when it comes from the bundled baseline", function()
+        -- The real shipped baseline carries this icon, so a fresh install with empty stores must
+        -- surface both names too -- the tooltip path a brand-new user sees before any scan.
+        assert.are.equal(SHARED, BUNDLE.bySpec[RET][ICON], "baseline fixture drifted")
+        local h = bmi.session({ db = {} })
+        h.login()
+        assert.are.equal(SHARED, h.ns.SpellTermsFor(ICON))
+    end)
+
+    it("does not double a blob the live store and the bundle both carry", function()
+        local h = bmi.session({ db = { spellTermsBySpec = { [RET] = { [ICON] = SHARED } } } })
+        h.login()
+        assert.are.equal(SHARED, h.ns.SpellTermsFor(ICON))
+    end)
+
+    it("keeps the superset when a live blob extends the bundled one", function()
+        local extended = SHARED .. "wake of ashes "
+        local h = bmi.session({ db = { spellTermsBySpec = { [RET] = { [ICON] = extended } } } })
+        h.login()
+        assert.are.equal(extended, h.ns.SpellTermsFor(ICON))
+    end)
+
+    it("carries both blobs when one icon is held by two different buckets", function()
+        -- A racial and a class-base spell on one icon: neither blob contains the other, so both
+        -- runs of names must survive into the merged entry. LEAK_ICON is synthetic, so the
+        -- baseline never contributes to it. The marker keeps the migration off the fixture.
+        local h = bmi.session({ db = {
+            spellTermsSchema = MARKER,
+            spellTermsByRace = { [BLOOD_ELF] = { [LEAK_ICON] = " arcane torrent " } },
+            spellTermsByClass = { [DEATH_KNIGHT] = { [LEAK_ICON] = " death strike " } },
+        } })
+        h.login()
+
+        local terms = h.ns.SpellTermsFor(LEAK_ICON)
+        assert.is_truthy(terms:find(" arcane torrent ", 1, true))
+        assert.is_truthy(terms:find(" death strike ", 1, true))
+    end)
+
+    it("keeps a scanned multi-word spell name whole through the full scan round trip", function()
+        local h = bmi.session({
+            db = {},
+            race = BLOOD_ELF,
+            class = DEATH_KNIGHT,
+            spellbook = {
+                { spells = { { 1001, "Arcane Torrent" } } },
+                { spells = { { 2001, "Death Strike" }, { 2001, "Death Coil" } } },
+            },
+        })
+        h.login()
+        h.run("scan")
+
+        -- Two class-base names on one icon sharing the word "death": the merged entry must read
+        -- exactly as the store wrote it, not collapse to " death strike coil ".
+        assert.are.equal(" death strike death coil ", h.db.spellTermsByClass[DEATH_KNIGHT][2001])
+        assert.are.equal(" death strike death coil ", h.ns.SpellTermsFor(2001))
+        assert.are.equal(" arcane torrent ", h.ns.SpellTermsFor(1001))
+    end)
+
+    it("agrees with /bmi export, whose mergeBlob it duplicates", function()
+        -- The anti-drift guard: scan.lua and dataset.lua each hold their own copy of mergeBlob
+        -- (both modules are independently removable), so the same overlapping blobs must come out
+        -- of ns.SpellTermsFor and out of /bmi export identically.
+        local cases = {
+            { live = SHARED, bundled = SHARED },                        -- identical
+            { live = SHARED .. "wake of ashes ", bundled = SHARED },    -- live extends the bundle
+            { live = SHARED, bundled = SHARED .. "wake of ashes " },    -- bundle extends live
+            { live = " templar's verdict ", bundled = " final verdict " },  -- partial overlap
+        }
+        for _, case in ipairs(cases) do
+            local live = { bySpec = { [RET] = { [ICON] = case.live } } }
+            local bundled = { bySpec = { [RET] = { [ICON] = case.bundled } } }
+
+            local session = bmi.session({ db = { spellTermsBySpec = live.bySpec } })
+            session.ns.bundledSpellTerms = bundled
+            session.login()
+
+            local exported = bmi.parse(bmi.load(live, bundled).export())
+            assert.are.equal(exported.bySpec[RET][ICON], session.ns.SpellTermsFor(ICON),
+                ("export and merged disagree for live %q / bundled %q"):format(case.live, case.bundled))
+        end
+    end)
+end)
+
 describe("scan.lua rebuilds cleanly after the migration", function()
     it("routes racials, class-base spells and spec spells to their own buckets", function()
         local h = bmi.session({
