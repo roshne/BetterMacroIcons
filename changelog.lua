@@ -7,6 +7,11 @@ local ns = select(2, ...)
 -- release notes.
 ---@type { version: string, notes: string }[]
 ns.changelog = {
+  { version = "12.0.7-r6", notes = [==[
+### CI
+- stop announcing docs-only pushes (#37)
+
+]==] },
   { version = "12.0.7-r5", notes = [==[
 ### Bug Fixes
 - union whole-name blobs in rebuildMerged, not per word (#36)

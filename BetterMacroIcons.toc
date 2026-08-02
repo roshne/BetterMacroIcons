@@ -2,7 +2,7 @@
 ## Title: Better Macro Icons
 ## Notes: Search and filter the macro, transmog outfit, equipment set, guild bank tab, and bank tab icon pickers
 ## Author: Roshne
-## Version: 12.0.7-r5
+## Version: 12.0.7-r6
 ## Category: User Interface
 ## X-License: Apache-2.0
 ## X-Curse-Project-ID: 1603026
