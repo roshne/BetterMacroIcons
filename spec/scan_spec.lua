@@ -47,8 +47,9 @@ local function sampleFrom(buckets)
     return key, fileID, buckets[key][fileID]
 end
 
--- rebuildMerged splits stored blobs on whitespace, so the merged index holds words, not whole
--- names. A blob is "still searchable" when every one of its words is in the merged entry.
+-- rebuildMerged unions whole-name blobs (#35) rather than splitting them into words, so the
+-- merged entry always contains each source blob verbatim (or overlapping with it). A blob is
+-- "still searchable" when every one of its words is in the merged entry.
 local function assertSearchable(ns, fileID, blob)
     local terms = ns.SpellTermsFor(fileID)
     for word in blob:gmatch("%S+") do
