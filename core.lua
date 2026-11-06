@@ -30,10 +30,10 @@ local pickers = {}
 -- ~30px row; in every other picker those elements are frame-anchored and stay put.
 local PICKER_ADDONS = {
     ["Blizzard_MacroUI"]        = { { frame = function() return MacroPopupFrame end } },
-    ["Blizzard_Transmog"]       = { { frame = function() return TransmogFrame.OutfitPopup end } },
+    ["Blizzard_Transmog"]       = { { frame = function() return TransmogFrame and TransmogFrame.OutfitPopup end } },
     ["Blizzard_UIPanels_Game"]  = {
         { frame = function() return GearManagerPopupFrame end },
-        { frame = function() return BankPanel.TabSettingsMenu end, gap = 32 },
+        { frame = function() return BankPanel and BankPanel.TabSettingsMenu end, gap = 32 },
     },
     ["Blizzard_GuildBankUI"]    = { { frame = function() return GuildBankPopupFrame end } },
 

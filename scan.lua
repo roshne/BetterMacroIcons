@@ -109,6 +109,12 @@ end
 -- class does no meaningful work and alts contribute nothing. Returns the pooled icon count.
 local function scanSpells(force)
     if not ns.db then return 0 end
+    -- Not every client ships the retail spellbook API (WoW Forever is unverified): bail out with
+    -- no new terms rather than raising on every SPELLS_CHANGED. Bundled terms still apply.
+    if not (Enum.SpellBookSkillLineIndex and Enum.SpellBookSpellBank
+            and C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines) then
+        return 0
+    end
     local bySpec, byRace, byClass = stores()
 
     local _, raceFile, raceID = UnitRace("player")
