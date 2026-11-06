@@ -376,3 +376,17 @@ describe("scan.lua rebuilds cleanly after the migration", function()
         assert.are.same({ [BLOOD_SPEC] = { [3001] = " marrowrend " } }, h.db.spellTermsBySpec)
     end)
 end)
+
+-- A client without the retail spellbook API (WoW Forever, unverified) must not raise from the
+-- scan; it just contributes no new terms.
+describe("scan.lua on a client without C_SpellBook skill lines", function()
+    it("scans nothing and does not error", function()
+        local h = bmi.session({ db = {}, spellbook = { { spells = { { 1001, "Arcane Torrent" } } } } })
+        h.login()
+        _G.C_SpellBook = nil
+        assert.has_no.errors(function() h.run("scan") end)
+        assert.are.same({}, h.db.spellTermsByRace)
+        _G.Enum.SpellBookSkillLineIndex = nil
+        assert.has_no.errors(function() h.run("scan") end)
+    end)
+end)
