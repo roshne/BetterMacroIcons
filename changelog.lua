@@ -7,6 +7,11 @@ local ns = select(2, ...)
 -- release notes.
 ---@type { version: string, notes: string }[]
 ns.changelog = {
+  { version = "12.1.5-r2", notes = [==[
+### Features
+- load on WoW: Forever (Interface 16001) and nil-guard the Blizzard picker getters (#45)
+
+]==] },
   { version = "12.1.5-r1", notes = [==[
 ### Maintenance
 - target WoW 12.1.5 (Interface 120105) (#44)
